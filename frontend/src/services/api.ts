@@ -5,11 +5,13 @@ import {
   ApprovalEditPayload,
   AuthTokenResponse,
   AuthUser,
+  ChatSession,
   HealthResponse,
   LoginCredentials,
   MCPDiscoveryResult,
   MCPServer,
   MCPServerRegisterPayload,
+  NotificationsResponse,
 } from '../types';
 
 const api = axios.create({
@@ -157,12 +159,16 @@ export const fetchHealth = async (): Promise<HealthResponse> => {
 export const interpretCommand = async (
   command: string,
   activeActionId?: string,
+  conversationId?: string,
   token?: string
 ): Promise<AIInterpretResponse> => {
   const headers = token ? getAuthHeaders(token) : undefined;
   const payload: any = { command };
   if (activeActionId) {
     payload.active_action_id = activeActionId;
+  }
+  if (conversationId) {
+    payload.conversation_id = conversationId;
   }
   const response = await api.post<AIInterpretResponse>(
     '/api/v1/ai/interpret',
@@ -172,12 +178,54 @@ export const interpretCommand = async (
   return response.data;
 };
 
-// --- Phase 7A: Persistent Chat History ---
-export const fetchChatHistory = async (token?: string): Promise<{ messages: any[]; total: number }> => {
+// --- Phase 7A: Persistent Chat History & ChatGPT-style Sessions ---
+export const fetchChatSessions = async (
+  token?: string
+): Promise<{ sessions: ChatSession[]; total: number }> => {
   const headers = token ? getAuthHeaders(token) : undefined;
-  const response = await api.get<{ messages: any[]; total: number }>(
-    '/api/v1/ai/history',
+  const response = await api.get<{ sessions: ChatSession[]; total: number }>(
+    '/api/v1/ai/sessions',
     headers ? { headers } : undefined
+  );
+  return response.data;
+};
+
+export const fetchSessionChatHistory = async (
+  sessionId: string,
+  token?: string
+): Promise<{ messages: any[]; total: number; conversation_id?: string }> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.get<{ messages: any[]; total: number; conversation_id?: string }>(
+    `/api/v1/ai/sessions/${sessionId}/history`,
+    headers ? { headers } : undefined
+  );
+  return response.data;
+};
+
+export const deleteChatSession = async (
+  sessionId: string,
+  token?: string
+): Promise<{ status: string; message: string }> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.delete<{ status: string; message: string }>(
+    `/api/v1/ai/sessions/${sessionId}`,
+    headers ? { headers } : undefined
+  );
+  return response.data;
+};
+
+export const fetchChatHistory = async (
+  conversationId?: string,
+  token?: string
+): Promise<{ messages: any[]; total: number; conversation_id?: string }> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const params = conversationId ? { conversation_id: conversationId } : undefined;
+  const response = await api.get<{ messages: any[]; total: number; conversation_id?: string }>(
+    '/api/v1/ai/history',
+    {
+      headers: headers ? headers : undefined,
+      params,
+    }
   );
   return response.data;
 };
@@ -213,6 +261,12 @@ export const fetchLiveActivities = async (token?: string): Promise<any> => {
 export const fetchWorkloadReport = async (token?: string): Promise<any> => {
   const headers = token ? getAuthHeaders(token) : undefined;
   const response = await api.get('/api/v1/reports/workload', headers ? { headers } : undefined);
+  return response.data;
+};
+
+export const fetchTeamWorkload = async (token?: string): Promise<any> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.get('/api/v1/tasks/team', headers ? { headers } : undefined);
   return response.data;
 };
 
@@ -287,6 +341,27 @@ export const cancelApproval = async (
 ): Promise<{ action_id: string; status: string; message: string }> => {
   const headers = token ? getAuthHeaders(token) : undefined;
   const response = await api.post(`/api/v1/approvals/${actionId}/cancel`, {}, headers ? { headers } : undefined);
+  return response.data;
+};
+
+// --- Real-time Notifications ---
+export const fetchNotifications = async (limit: number = 20, token?: string): Promise<NotificationsResponse> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.get<NotificationsResponse>(`/api/v1/notifications?limit=${limit}`, headers ? { headers } : undefined);
+  return response.data;
+};
+
+export const markNotificationsRead = async (
+  notificationId?: string,
+  markAll: boolean = false,
+  token?: string
+): Promise<{ status: string; message: string }> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.post<{ status: string; message: string }>(
+    '/api/v1/notifications/mark-read',
+    { notification_id: notificationId, mark_all: markAll },
+    headers ? { headers } : undefined
+  );
   return response.data;
 };
 

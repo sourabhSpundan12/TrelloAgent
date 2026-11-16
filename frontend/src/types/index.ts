@@ -81,11 +81,22 @@ export interface ApprovalConfirmResult {
   message: string;
 }
 
+export interface ChatSession {
+  id: string;
+  user_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count?: number;
+}
+
 export interface ChatMessage {
   id: string;
+  conversation_id?: string;
   sender: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
+  created_at?: string;
   intent?: string;
   parameters?: Record<string, any>;
   discoveredTool?: {
@@ -114,6 +125,7 @@ export interface AIInterpretResponse {
   candidate_tools_count: number;
   action_id?: string | null;
   conversational_message?: string | null;
+  conversation_id?: string | null;
   execution_result?: any;
   execution_preview?: {
     action_id: string;
@@ -296,4 +308,26 @@ export interface AuthTokenResponse {
 export interface LoginCredentials {
   email: string;
   password: string;
+}
+
+// Real-Time Notification Types
+export interface NotificationItem {
+  id: string;
+  type: 'APPROVAL_REQUIRED' | 'ACTION_EXECUTED' | 'ACTION_CANCELLED' | 'ACTION_FAILED' | 'INFO';
+  title: string;
+  message: string;
+  created_at: string;
+  is_read: boolean;
+  action_id?: string;
+  action_type?: string;
+  card_url?: string;
+  target_tab?: string;
+  priority?: string;
+}
+
+export interface NotificationsResponse {
+  status: string;
+  unread_count: number;
+  total: number;
+  notifications: NotificationItem[];
 }

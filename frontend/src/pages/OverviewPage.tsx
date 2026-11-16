@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { StatCard } from '../components/common/StatCard';
 import { Card, CardHeader, CardContent } from '../components/common/Card';
-import { DemoBanner } from '../components/common/DemoBanner';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { useAuth } from '../context/AuthContext';
@@ -59,11 +58,6 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
 
   return (
     <div className="space-y-6">
-      <DemoBanner
-        mode="live"
-        message="Live System Overview: Metrics synchronized directly from live Trello board via MCP and pending actions in MongoDB Atlas."
-      />
-
       {/* Header Action Bar */}
       <div className="flex items-center justify-between">
         <div>

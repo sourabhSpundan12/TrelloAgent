@@ -41,6 +41,17 @@ async def trello_get_board(board_id: Optional[str] = None) -> Dict[str, Any]:
         return {"status": "ERROR", "error": True, "message": err.message, "status_code": err.status_code}
 
 
+async def trello_list_board_members(board_id: Optional[str] = None) -> Dict[str, Any]:
+    """List all members belonging to the target board."""
+    client = get_trello_client()
+    try:
+        members = await client.list_board_members(board_id=board_id)
+        return {"status": "SUCCESS", "members": members, "total": len(members)}
+    except TrelloError as err:
+        logger.warning(f"trello_list_board_members failed: {err}")
+        return {"status": "ERROR", "error": True, "message": err.message, "status_code": err.status_code}
+
+
 async def trello_list_lists(board_id: Optional[str] = None) -> Dict[str, Any]:
     """List all open columns/lists on a Trello board (defaults to configured board ID)."""
     client = get_trello_client()

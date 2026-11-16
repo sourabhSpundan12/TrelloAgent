@@ -14,7 +14,6 @@ import {
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
-import { DemoBanner } from '../components/common/DemoBanner';
 import { EmptyState } from '../components/common/EmptyState';
 import { useAuth } from '../context/AuthContext';
 import { fetchTrelloTasks } from '../services/api';
@@ -69,11 +68,6 @@ export const TasksPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <DemoBanner
-        mode="live"
-        message="Live Trello Board Monitor: Cards are fetched in real-time via Trello MCP tools. Use the AI Assistant to create, move, search, or update cards naturally."
-      />
-
       {/* Conversational Callout */}
       <div className="p-4 rounded-2xl bg-brand-50/70 dark:bg-brand-500/10 border border-brand-200/80 dark:border-brand-500/20 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
         <div className="flex items-center space-x-3">

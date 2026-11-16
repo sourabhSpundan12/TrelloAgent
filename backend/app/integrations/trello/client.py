@@ -330,6 +330,7 @@ class TrelloClient:
                 "url": c.get("url"),
                 "due": c.get("due"),
                 "labels": c.get("labels", []),
+                "idMembers": c.get("idMembers", []),
             }
             for c in cards
         ]
@@ -350,6 +351,7 @@ class TrelloClient:
             "url": c.get("url"),
             "due": c.get("due"),
             "labels": c.get("labels", []),
+            "idMembers": c.get("idMembers", []),
         }
 
     # 6. Create a card
@@ -438,7 +440,13 @@ class TrelloClient:
 
         if member_name or member_id:
             try:
-                await self.add_member_to_card(card_id=card_id.strip(), member_name=member_name, member_id=member_id, board_id=board_id)
+                mem_res = await self.add_member_to_card(card_id=card_id.strip(), member_name=member_name, member_id=member_id, board_id=board_id)
+                if mem_res and mem_res.get("status") == "NOT_FOUND":
+                    raise TrelloValidationError(f"Member '{member_name}' not found on the Trello board.")
+                # Refresh card representation to include the new member
+                c = await self.get_card(card_id.strip())
+            except (TrelloValidationError, TrelloError):
+                raise
             except Exception as e:
                 logger.warning(f"Failed to assign member '{member_name}' to card '{card_id}': {e}")
 
@@ -451,6 +459,7 @@ class TrelloClient:
             "closed": c.get("closed", False),
             "url": c.get("url"),
             "due": c.get("due"),
+            "idMembers": c.get("idMembers", []),
         }
 
     # 8. Move a card between lists

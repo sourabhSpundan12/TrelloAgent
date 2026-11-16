@@ -13,7 +13,6 @@ import {
 import { Card, CardHeader } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
-import { DemoBanner } from '../components/common/DemoBanner';
 import { useAuth } from '../context/AuthContext';
 import { fetchWorkloadReport } from '../services/api';
 
@@ -51,11 +50,6 @@ export const ReportsPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <DemoBanner
-        mode="live"
-        message="Live Workload & Velocity Report: Calculated deterministically from configured Trello board cards using backend MCP tools."
-      />
-
       {/* Control Filter Bar */}
       <Card className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>

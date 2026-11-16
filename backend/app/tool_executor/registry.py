@@ -1,6 +1,6 @@
 import re
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from app.core.config import settings
 from app.core.logging import logger
 from app.core.security import compute_payload_hash
@@ -23,6 +23,49 @@ class EchoExecutor(BaseExecutor):
             result={"echo": parameters, "invoker": context.user_id},
             message="Echo execution completed successfully.",
         )
+
+
+def find_best_matching_card(cards: List[Dict[str, Any]], target_name: str) -> Optional[Dict[str, Any]]:
+    """
+    Finds the best matching card from a list of Trello cards.
+    Prioritizes exact match (ignoring optional trailing 'card'),
+    then normalized alphanumeric match, then closest-length substring match.
+    """
+    if not target_name or not cards:
+        return None
+
+    clean_target = re.sub(r"\s+card$", "", target_name.strip().lower(), flags=re.IGNORECASE).strip()
+    norm_target = re.sub(r"[^a-z0-9]", "", clean_target)
+
+    # 1. Exact match (case-insensitive, ignoring trailing 'card')
+    for c in cards:
+        c_name = c.get("name", "").strip().lower()
+        clean_cname = re.sub(r"\s+card$", "", c_name, flags=re.IGNORECASE).strip()
+        if clean_cname == clean_target:
+            return c
+
+    # 2. Normalized alphanumeric match
+    if norm_target:
+        for c in cards:
+            c_name = c.get("name", "").strip().lower()
+            clean_cname = re.sub(r"\s+card$", "", c_name, flags=re.IGNORECASE).strip()
+            norm_cname = re.sub(r"[^a-z0-9]", "", clean_cname)
+            if norm_cname and norm_cname == norm_target:
+                return c
+
+    # 3. Substring match: rank by length difference to prefer the closest match
+    candidates = []
+    for c in cards:
+        c_name = c.get("name", "").strip().lower()
+        clean_cname = re.sub(r"\s+card$", "", c_name, flags=re.IGNORECASE).strip()
+        if clean_target in clean_cname or clean_cname in clean_target:
+            candidates.append(c)
+
+    if candidates:
+        candidates.sort(key=lambda c: abs(len(c.get("name", "")) - len(target_name)))
+        return candidates[0]
+
+    return None
 
 
 class MockTrelloCreateCardExecutor(BaseExecutor):
@@ -230,11 +273,10 @@ class MockTrelloMoveCardExecutor(BaseExecutor):
                 # Resolve card_id dynamically if missing
                 if not card_id or card_id.startswith("card_") or card_id == "c101":
                     cards_res = await trello_tools.trello_list_cards()
-                    for c in cards_res.get("cards", []):
-                        if card_name.lower().strip() in c.get("name", "").lower():
-                            card_id = c["id"]
-                            card_name = c["name"]
-                            break
+                    matched_c = find_best_matching_card(cards_res.get("cards", []), card_name)
+                    if matched_c:
+                        card_id = matched_c["id"]
+                        card_name = matched_c["name"]
 
                 # Resolve list_id dynamically if missing
                 if not list_id or list_id.startswith("list_"):
@@ -347,13 +389,10 @@ class MockTrelloUpdateCardExecutor(BaseExecutor):
 
                 if not card_id or card_id == "c101":
                     cards_res = await trello_tools.trello_list_cards()
-                    clean_cname = re.sub(r"\s+card$", "", card_name.lower().strip()).strip()
-                    for c in cards_res.get("cards", []):
-                        c_low = c.get("name", "").lower()
-                        if clean_cname and (clean_cname in c_low or c_low in clean_cname):
-                            card_id = c["id"]
-                            card_name = c["name"]
-                            break
+                    matched_c = find_best_matching_card(cards_res.get("cards", []), card_name)
+                    if matched_c:
+                        card_id = matched_c["id"]
+                        card_name = matched_c["name"]
 
                 if card_id:
                     new_title = parameters.get("new_title") or parameters.get("new_name")
@@ -424,28 +463,9 @@ class MockTrelloArchiveCardExecutor(BaseExecutor):
 
                 if not card_id or card_id == "c101":
                     cards_res = await trello_tools.trello_list_cards()
-                    all_cards = cards_res.get("cards", [])
-                    # 1. Exact match (case-insensitive)
-                    for c in all_cards:
-                        if c.get("name", "").strip().lower() == card_name.strip().lower():
-                            card_id = c["id"]
-                            break
-                    # 2. Substring match
-                    if not card_id:
-                        for c in all_cards:
-                            c_n = c.get("name", "").strip().lower()
-                            cn_target = card_name.strip().lower()
-                            if cn_target in c_n or c_n in cn_target:
-                                card_id = c["id"]
-                                break
-                    # 3. Normalized alphanumeric match
-                    if not card_id:
-                        norm_target = re.sub(r"[^a-z0-9]", "", card_name.lower())
-                        for c in all_cards:
-                            c_norm = re.sub(r"[^a-z0-9]", "", c.get("name", "").lower())
-                            if norm_target and (norm_target in c_norm or c_norm in norm_target):
-                                card_id = c["id"]
-                                break
+                    matched_c = find_best_matching_card(cards_res.get("cards", []), card_name)
+                    if matched_c:
+                        card_id = matched_c["id"]
 
                 if card_id:
                     del_res = await trello_tools.trello_delete_card(card_id=card_id)
@@ -694,10 +714,9 @@ class MockTrelloCardDetailsExecutor(BaseExecutor):
                 from app.mcp_server import trello_tools
                 if not card_id or card_id == "c101":
                     cards_res = await trello_tools.trello_list_cards()
-                    for c in cards_res.get("cards", []):
-                        if card_name.lower() in c.get("name", "").lower():
-                            card_id = c["id"]
-                            break
+                    matched_c = find_best_matching_card(cards_res.get("cards", []), card_name)
+                    if matched_c:
+                        card_id = matched_c["id"]
 
                 if card_id:
                     detail_res = await trello_tools.trello_get_card(card_id=card_id)

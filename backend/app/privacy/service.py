@@ -255,6 +255,14 @@ class PIIService:
 
             # Task management safety: If entity is PERSON, do not falsely mask standard action verbs or technical objects
             if r.entity_type == "PERSON":
+                pronouns_and_non_names = {
+                    "it", "this", "that", "them", "me", "us", "you", "him", "her", "his",
+                    "their", "its", "which", "what", "where", "when", "why", "how",
+                    "all", "some", "any", "none", "each", "both", "my", "our", "your"
+                }
+                if span_text in pronouns_and_non_names or any(t in pronouns_and_non_names for t in tokens if len(tokens) == 1):
+                    continue
+
                 action_verbs = {
                     "create", "email", "send", "call", "move", "add", "delete",
                     "remove", "update", "edit", "list", "review", "assign",
