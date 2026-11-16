@@ -438,7 +438,7 @@ class AIService:
             if raw_card_name.lower().startswith("to "):
                 raw_card_name = raw_card_name[3:].strip()
 
-            # Extract member to assign if present (e.g. "and add member sourabh mishra", "with member Alex")
+            # Extract member to assign if present (e.g. "and add member sourabh mishra", "with member Alex", "for Yogesh")
             member_name = None
             member_match = re.search(
                 r"(?:and\s+)?(?:add\s+member|assign\s+member|assign\s+to|member\s*[:=]?)\s+([a-zA-Z0-9_\-\s\[\]]+?)(?:\s+(?:due|with|under|in)|$)",
@@ -453,6 +453,27 @@ class AIService:
                     raw_card_name,
                     flags=re.IGNORECASE,
                 ).strip()
+
+            # Handle pattern: "create a task for <Member> ... ask him/her to <Action>"
+            for_member_match = re.search(
+                r"^for\s+([a-zA-Z0-9_\-\s\[\]]+?)(?:\s*\.|\s+and|\s+his|\s+her|\s+email|\s+phone|\s+ask|$)",
+                raw_card_name,
+                re.IGNORECASE,
+            )
+            if for_member_match:
+                cand_member = for_member_match.group(1).strip().strip('"\'')
+                if not member_name and cand_member:
+                    member_name = cand_member
+
+            ask_action_match = re.search(
+                r"(?:ask|tell)\s+(?:him|her|them)?\s+(?:to\s+)?([a-zA-Z0-9_\-\s]+?)(?:\s+(?:by|due|on|before|\.|$))",
+                command,
+                re.IGNORECASE,
+            )
+            if ask_action_match:
+                action_name = ask_action_match.group(1).strip().strip('"\'')
+                if action_name and len(action_name) > 1 and action_name.lower() not in ("the", "a", "an", "this", "that"):
+                    raw_card_name = action_name
 
             # Extract priority if present
             priority = "MEDIUM"

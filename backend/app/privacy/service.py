@@ -20,6 +20,7 @@ from app.privacy.recognizers.indian_recognizers import (
     IndianPanRecognizer,
     IndianAadhaarRecognizer,
     IndianPassportRecognizer,
+    TaskMemberNameRecognizer,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,7 @@ class PIIService:
         registry.add_recognizer(IndianPanRecognizer())
         registry.add_recognizer(IndianAadhaarRecognizer())
         registry.add_recognizer(IndianPassportRecognizer())
+        registry.add_recognizer(TaskMemberNameRecognizer())
 
     def mask_text(
         self,
