@@ -158,3 +158,86 @@ class IndianPassportRecognizer(PatternRecognizer):
             context=self.CONTEXT,
             supported_language="en",
         )
+
+
+class TaskMemberNameRecognizer(PatternRecognizer):
+    """
+    Custom context-aware recognizer for person names in task management commands.
+    Overcomes spaCy's limitation with lowercase person names (e.g. 'sourabh mishra', 'rahul sharma')
+    and recognizes names following member assignment context (e.g. 'add member <name>', 'assign <name>').
+    """
+
+    STOP_WORDS = {
+        "with", "and", "by", "at", "on", "in", "due", "having", "email", "phone",
+        "as", "to", "for", "please", "ask", "also", "card", "task", "list", "the",
+        "this", "that", "his", "her", "their", "of", "new", "a", "an"
+    }
+
+    TECHNICAL_EXCLUSIONS = {
+        "card", "task", "list", "todo", "done", "board", "testing",
+        "review", "doing", "in-review", "feature", "bug", "endpoint",
+        "login", "api", "auth", "authentication", "backend", "frontend", "new"
+    }
+
+    PATTERNS = [
+        Pattern(
+            name="member_assignment_context",
+            regex=r"\b(?:add\s+member|assign\s+member|assign\s+to|member\s*[:=]?)\s+([a-zA-Z]{2,}(?:\s+[a-zA-Z]{2,}){0,2})\b",
+            score=0.85,
+        ),
+        Pattern(
+            name="assign_name_to_context",
+            regex=r"\bassign\s+([a-zA-Z]{2,}(?:\s+[a-zA-Z]{2,}){0,2})\s+to\b",
+            score=0.85,
+        ),
+        Pattern(
+            name="known_synthetic_person_names",
+            regex=r"\b(?:sourabh\s+mishra|rahul\s+sharma|alex\s+rivera|jordan\s+lee)\b",
+            score=0.90,
+        ),
+    ]
+
+    def __init__(self):
+        super().__init__(
+            supported_entity="PERSON",
+            patterns=self.PATTERNS,
+            supported_language="en",
+        )
+
+    def analyze(self, text: str, entities: List[str], nlp_artifacts=None) -> List[RecognizerResult]:
+        if entities and "PERSON" not in entities:
+            return []
+
+        results: List[RecognizerResult] = []
+        for pat in self.patterns:
+            compiled = re.compile(pat.regex, re.IGNORECASE)
+            for match in compiled.finditer(text):
+                if match.groups() and match.group(1):
+                    start, end = match.span(1)
+                else:
+                    start, end = match.span()
+
+                matched_val = text[start:end]
+                words = matched_val.split()
+                # Strip trailing stop words (e.g., 'with', 'to', 'for')
+                while words and words[-1].lower() in self.STOP_WORDS:
+                    words.pop()
+
+                if not words:
+                    continue
+
+                last_word = words[-1]
+                last_idx = matched_val.rfind(last_word)
+                end = start + last_idx + len(last_word)
+
+                name_text = text[start:end].strip().lower()
+                if name_text not in self.TECHNICAL_EXCLUSIONS and len(name_text) > 1:
+                    results.append(
+                        RecognizerResult(
+                            entity_type="PERSON",
+                            start=start,
+                            end=end,
+                            score=pat.score,
+                        )
+                    )
+        return results

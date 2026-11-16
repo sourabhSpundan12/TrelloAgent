@@ -59,15 +59,22 @@ USER COMMAND:
 AVAILABLE DYNAMIC TOOLS (Discovered from Registry):
 {tools_context}
 
+CRITICAL CONVERSATION CONTEXT & PRECEDENCE RULES:
+- The CURRENT USER COMMAND ALWAYS takes absolute precedence over PREVIOUS CONVERSATION CONTEXT.
+- NEVER copy, carry over, or blend task titles ('name') or descriptions ('desc') from previous conversation history into a new task command!
+- If the current USER COMMAND defines a task (e.g. "Ask him to Checkin by 20 November"), the task title MUST be extracted from the current command ("Checkin"), NEVER from prior messages (like "client onboarding").
+
 INSTRUCTIONS:
 1. Identify the user intent (e.g., create_card, move_card, update_card, delete_card, search_cards, get_workload, get_employee_tasks).
 2. Identify the target entity (e.g., card, task, report, employee).
 3. Select the most relevant tool_id from AVAILABLE DYNAMIC TOOLS. If none match, set suggested_tool_id to null.
 4. Extract parameters conforming to the selected tool's input_schema properties:
    - For task creation (e.g., 'trello_create_card'):
-     * 'name': A clean, concise title/heading for the task (e.g. "Full Stack", "Backend", "JWT Authentication"). Note: If the user says "create a task card <Title>...", the title is <Title>!
-     * 'member_name': Name of team member or employee to assign or add to the card if mentioned in the command (e.g. "Alex Rivera", "Jordan Lee").
-     * 'desc': YOU MUST ALWAYS generate an informative, professional description directly related to the task heading/topic. Detail key objectives, deliverables, and implementation scope for this specific task. NEVER leave 'desc' empty and NEVER use a generic placeholder like "Task created via assistant".
+     * 'name': A clean, concise title/heading for the task:
+       - If the user says "Create a task for <Person>. ... Ask him/her to <Action> by <Date>" (e.g. "Ask him to Checkin by 20 November"), the task title 'name' is the action requested: "Checkin" (or "Check In"), NOT the person's name, and NEVER prior topics from history!
+       - If the user says "create a task card <Title>...", the title is <Title> (e.g. "Full Stack", "Backend", "JWT Authentication").
+     * 'member_name': Name of team member or employee to assign or add to the card if mentioned in the command (e.g. "Yogesh", "Alex Rivera", "Jordan Lee").
+     * 'desc': YOU MUST ALWAYS generate an informative, professional description directly related to the current task heading/action. Detail key objectives, deliverables, and implementation scope for this specific task. NEVER leave 'desc' empty and NEVER pull descriptions from previous messages.
      * 'list_name': Target column name (defaults to "To Do" if unspecified).
      * 'priority': Task priority ("LOW", "MEDIUM", "HIGH", "URGENT").
      * 'due_date': Due date if mentioned.
