@@ -264,6 +264,12 @@ export const fetchWorkloadReport = async (token?: string): Promise<any> => {
   return response.data;
 };
 
+export const fetchTeamWorkload = async (token?: string): Promise<any> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.get('/api/v1/tasks/team', headers ? { headers } : undefined);
+  return response.data;
+};
+
 // --- Phase 4B: MCP Endpoints ---
 export const fetchMcpServers = async (token?: string): Promise<MCPServer[]> => {
   const headers = token ? getAuthHeaders(token) : undefined;

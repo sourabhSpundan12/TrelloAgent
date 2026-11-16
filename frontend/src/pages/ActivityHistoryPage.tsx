@@ -16,7 +16,6 @@ import {
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
-import { DemoBanner } from '../components/common/DemoBanner';
 import { EmptyState } from '../components/common/EmptyState';
 import { useAuth } from '../context/AuthContext';
 import { fetchLiveActivities } from '../services/api';
@@ -77,11 +76,6 @@ export const ActivityHistoryPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <DemoBanner
-        mode="live"
-        message="Live Audit Trail: Real-time action log stored in MongoDB Atlas pending_actions. Displays all conversational tool intents, human approvals, and MCP executions."
-      />
-
       {/* Filter and Search Bar */}
       <Card className="p-4 flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
         <div className="relative flex-1 max-w-md">

@@ -89,7 +89,7 @@ export const LoginModal: React.FC = () => {
           </div>
         </div>
 
-        <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <span className="text-[11px] text-slate-500">Bootstrap Administrator Account:</span>
           <button
             type="button"

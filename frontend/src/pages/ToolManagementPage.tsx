@@ -24,7 +24,6 @@ import { Button } from '../components/common/Button';
 import { Badge, CategoryBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { StatCard } from '../components/common/StatCard';
-import { DemoBanner } from '../components/common/DemoBanner';
 import { EmptyState } from '../components/common/EmptyState';
 import {
   RegisteredTool,
@@ -340,8 +339,6 @@ export const ToolManagementPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <DemoBanner message="Phase 4B MCP Architecture: Dynamic Tool Registry + Model Context Protocol (MCP) Client/Server. Extensible to hundreds of distributed remote tools over Streamable HTTP and stdio." />
-
       {/* Tab Selector */}
       <div className="flex items-center space-x-2 border-b border-slate-200 dark:border-slate-800 pb-3">
         <button

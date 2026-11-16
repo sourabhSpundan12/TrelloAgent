@@ -170,29 +170,33 @@ class TaskMemberNameRecognizer(PatternRecognizer):
     STOP_WORDS = {
         "with", "and", "by", "at", "on", "in", "due", "having", "email", "phone",
         "as", "to", "for", "please", "ask", "also", "card", "task", "list", "the",
-        "this", "that", "his", "her", "their", "of", "new", "a", "an"
+        "this", "that", "his", "her", "their", "of", "new", "a", "an", "it", "them",
+        "him", "her", "me", "us", "you", "its", "my", "our", "your", "ticket",
+        "issue", "item", "board", "all", "some", "any", "these", "those"
     }
 
     TECHNICAL_EXCLUSIONS = {
         "card", "task", "list", "todo", "done", "board", "testing",
         "review", "doing", "in-review", "feature", "bug", "endpoint",
-        "login", "api", "auth", "authentication", "backend", "frontend", "new"
+        "login", "api", "auth", "authentication", "backend", "frontend", "new",
+        "it", "this", "that", "them", "him", "her", "me", "us", "you", "ticket",
+        "issue", "item"
     }
 
     PATTERNS = [
         Pattern(
             name="member_assignment_context",
-            regex=r"\b(?:add\s+member|assign\s+member|assign\s+to|member\s*[:=]?)\s+([a-zA-Z]{2,}(?:\s+[a-zA-Z]{2,}){0,2})\b",
+            regex=r"\b(?:add\s+member|assign\s+member|assign\s+(?:(?:it|this|that|the\s+(?:task|card|ticket)|task|card|ticket)\s+)?to|member\s*[:=]?)\s+([a-zA-Z]{2,}(?:\s+[a-zA-Z]{2,}){0,2})\b",
             score=0.85,
         ),
         Pattern(
             name="assign_name_to_context",
-            regex=r"\bassign\s+([a-zA-Z]{2,}(?:\s+[a-zA-Z]{2,}){0,2})\s+to\b",
+            regex=r"\b(?:assign|add)\s+([a-zA-Z]{2,}(?:\s+[a-zA-Z]{2,}){0,2})\s+to\b",
             score=0.85,
         ),
         Pattern(
             name="known_synthetic_person_names",
-            regex=r"\b(?:sourabh\s+mishra|rahul\s+sharma|alex\s+rivera|jordan\s+lee)\b",
+            regex=r"\b(?:sourabh|rahul|alex|jordan|elena|marcus)(?:\s+[a-zA-Z]{2,})?\b",
             score=0.90,
         ),
     ]
@@ -219,6 +223,9 @@ class TaskMemberNameRecognizer(PatternRecognizer):
 
                 matched_val = text[start:end]
                 words = matched_val.split()
+                # Strip leading stop words (e.g., 'it', 'the', 'a')
+                while words and words[0].lower() in self.STOP_WORDS:
+                    words.pop(0)
                 # Strip trailing stop words (e.g., 'with', 'to', 'for')
                 while words and words[-1].lower() in self.STOP_WORDS:
                     words.pop()
@@ -226,17 +233,24 @@ class TaskMemberNameRecognizer(PatternRecognizer):
                 if not words:
                     continue
 
+                first_word = words[0]
                 last_word = words[-1]
+                first_idx = matched_val.find(first_word)
                 last_idx = matched_val.rfind(last_word)
-                end = start + last_idx + len(last_word)
+                adj_start = start + first_idx
+                adj_end = start + last_idx + len(last_word)
 
-                name_text = text[start:end].strip().lower()
-                if name_text not in self.TECHNICAL_EXCLUSIONS and len(name_text) > 1:
+                name_text = text[adj_start:adj_end].strip().lower()
+                if (
+                    name_text not in self.TECHNICAL_EXCLUSIONS
+                    and name_text not in self.STOP_WORDS
+                    and len(name_text) > 1
+                ):
                     results.append(
                         RecognizerResult(
                             entity_type="PERSON",
-                            start=start,
-                            end=end,
+                            start=adj_start,
+                            end=adj_end,
                             score=pat.score,
                         )
                     )

@@ -330,6 +330,7 @@ class TrelloClient:
                 "url": c.get("url"),
                 "due": c.get("due"),
                 "labels": c.get("labels", []),
+                "idMembers": c.get("idMembers", []),
             }
             for c in cards
         ]
@@ -350,6 +351,7 @@ class TrelloClient:
             "url": c.get("url"),
             "due": c.get("due"),
             "labels": c.get("labels", []),
+            "idMembers": c.get("idMembers", []),
         }
 
     # 6. Create a card

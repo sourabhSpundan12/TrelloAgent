@@ -10,7 +10,6 @@ import {
 import { Card, CardHeader, CardContent } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
-import { DemoBanner } from '../components/common/DemoBanner';
 import { useTheme } from '../context/ThemeContext';
 
 export const SettingsPage: React.FC = () => {
@@ -24,8 +23,6 @@ export const SettingsPage: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <DemoBanner message="Settings & Integrations: Credentials (GEMINI_API_KEY, TRELLO_TOKEN) are securely bound on the backend and NEVER stored in frontend storage or source code." />
-
       <div className="flex flex-col lg:flex-row gap-6">
         {/* Left Subnav Tabs */}
         <Card className="w-full lg:w-64 p-3 shrink-0 h-fit space-y-1">

@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Cpu,
+  X,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -18,6 +19,8 @@ interface SidebarProps {
   onTabChange: (tabId: string) => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  isMobile?: boolean;
+  onCloseMobile?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -25,6 +28,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onTabChange,
   isCollapsed,
   onToggleCollapse,
+  isMobile = false,
+  onCloseMobile,
 }) => {
   const navItems = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -39,8 +44,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside
-      className={`relative bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between transition-all duration-300 z-20 shrink-0 ${isCollapsed ? 'w-20' : 'w-64'
-        }`}
+      className={`relative bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between transition-all duration-300 z-20 shrink-0 h-full ${
+        isMobile ? 'w-full' : isCollapsed ? 'w-20' : 'w-64'
+      }`}
     >
       <div>
         {/* Logo and Brand Title */}
@@ -49,7 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="p-2 rounded-xl bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20 shrink-0">
               <Cpu className="w-5 h-5" />
             </div>
-            {!isCollapsed && (
+            {(!isCollapsed || isMobile) && (
               <div className="truncate">
                 <h1 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight truncate">
                   Agentic Task
@@ -61,13 +67,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           </div>
 
-          <button
-            onClick={onToggleCollapse}
-            title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition shrink-0"
-          >
-            {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-          </button>
+          {isMobile ? (
+            <button
+              onClick={onCloseMobile}
+              title="Close navigation"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition shrink-0"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          ) : (
+            <button
+              onClick={onToggleCollapse}
+              title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition shrink-0"
+            >
+              {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+            </button>
+          )}
         </div>
 
         {/* Navigation Items */}
