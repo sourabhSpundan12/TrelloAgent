@@ -114,12 +114,21 @@ class ApprovalService:
         elif action_type == "UPDATE_CARD":
             raw_desc = parameters.get("desc") or parameters.get("description") or parameters.get("new_description")
             member_name = parameters.get("member_name") or parameters.get("assignee")
+            new_due = parameters.get("new_due_date") or parameters.get("due_date") or parameters.get("due") or parameters.get("date")
+            new_title_param = parameters.get("new_name") or parameters.get("new_title")
+
+            updates = []
+            if new_title_param:
+                updates.append(f"rename to '{new_title_param}'")
+            if new_due:
+                updates.append(f"set due date to '{new_due}'")
             if member_name:
-                description = f"Assign member '{member_name}' to card '{title}'."
-                if raw_desc:
-                    description += f" Notes: {raw_desc}"
-            elif raw_desc and "task created via agentic assistant" not in str(raw_desc).lower() and str(raw_desc).strip() != "":
-                description = str(raw_desc).strip()
+                updates.append(f"assign member '{member_name}'")
+            if raw_desc and "task created via agentic assistant" not in str(raw_desc).lower() and str(raw_desc).strip() != "":
+                updates.append(f"update notes to '{raw_desc}'")
+
+            if updates:
+                description = f"Update card '{title}': {', '.join(updates)}."
             else:
                 description = f"Update card '{title}' on the board."
         elif action_type in ("ARCHIVE_CARD", "DELETE_CARD"):
@@ -133,7 +142,13 @@ class ApprovalService:
 
         # Resolve priority & due date
         priority = (parameters.get("priority") or "MEDIUM").upper()
-        due_date = parameters.get("due_date") or parameters.get("due") or None
+        due_date = (
+            parameters.get("due_date")
+            or parameters.get("new_due_date")
+            or parameters.get("due")
+            or parameters.get("date")
+            or None
+        )
 
         # Build clean execution parameters
         exec_params: Dict[str, Any] = dict(parameters)
@@ -150,6 +165,9 @@ class ApprovalService:
                 exec_params["desc"] = parameters.get("desc") or parameters.get("description") or parameters.get("new_description")
             if parameters.get("member_name"):
                 exec_params["member_name"] = parameters.get("member_name")
+            if due_date:
+                exec_params["new_due_date"] = due_date
+                exec_params["due_date"] = due_date
         if due_date:
             exec_params["due_date"] = due_date
         if target_board_id and "board_id" not in exec_params:

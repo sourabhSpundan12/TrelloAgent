@@ -53,4 +53,5 @@ class AIInterpretResponse(BaseModel):
     action_id: Optional[str] = None
     execution_result: Optional[Dict[str, Any]] = None
     conversational_message: Optional[str] = None
+    conversation_id: Optional[str] = None
 

@@ -8,7 +8,12 @@ from app.approvals.models import ApprovalStatus
 from app.approvals.schemas import ApprovalEditRequest
 from app.approvals.service import ApprovalService
 from app.chat.repository import ChatRepository
-from app.chat.schemas import ChatHistoryResponse, ChatMessageSchema
+from app.chat.schemas import (
+    ChatHistoryResponse,
+    ChatMessageSchema,
+    ChatSessionListResponse,
+    ChatSessionSchema,
+)
 from app.core.dependencies import get_current_user
 from app.core.logging import logger
 from app.database.mongodb import get_database
@@ -32,6 +37,67 @@ def get_ai_services(db: AsyncIOMotorDatabase = Depends(get_database)):
 
 
 @router.get(
+    "/sessions",
+    response_model=ChatSessionListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List user chat conversation sessions",
+    description="Fetches all chat sessions (threads) for the authenticated user from MongoDB Atlas.",
+)
+async def list_user_chat_sessions(
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> ChatSessionListResponse:
+    chat_repo = ChatRepository(db)
+    sessions = await chat_repo.list_sessions(user_id=current_user.id, limit=50)
+    parsed = []
+    for s in sessions:
+        try:
+            parsed.append(ChatSessionSchema(**s))
+        except Exception as e:
+            logger.warning(f"Error parsing chat session: {e}")
+    return ChatSessionListResponse(sessions=parsed, total=len(parsed))
+
+
+@router.get(
+    "/sessions/{session_id}/history",
+    response_model=ChatHistoryResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get chat history for a specific conversation session",
+    description="Fetches persistent conversational messages for a specific session from MongoDB Atlas.",
+)
+async def get_session_chat_history(
+    session_id: str,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> ChatHistoryResponse:
+    chat_repo = ChatRepository(db)
+    messages = await chat_repo.get_history(user_id=current_user.id, conversation_id=session_id, limit=100)
+    parsed_messages = []
+    for m in messages:
+        try:
+            parsed_messages.append(ChatMessageSchema(**m))
+        except Exception as e:
+            logger.warning(f"Error parsing chat message: {e}")
+    return ChatHistoryResponse(messages=parsed_messages, total=len(parsed_messages), conversation_id=session_id)
+
+
+@router.delete(
+    "/sessions/{session_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Delete a single conversation session",
+    description="Removes a specific chat session and its messages from MongoDB Atlas.",
+)
+async def delete_user_chat_session(
+    session_id: str,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> Dict[str, Any]:
+    chat_repo = ChatRepository(db)
+    deleted = await chat_repo.delete_session(user_id=current_user.id, conversation_id=session_id)
+    return {"status": "SUCCESS", "message": f"Session '{session_id}' deleted.", "deleted": deleted}
+
+
+@router.get(
     "/history",
     response_model=ChatHistoryResponse,
     status_code=status.HTTP_200_OK,
@@ -39,18 +105,19 @@ def get_ai_services(db: AsyncIOMotorDatabase = Depends(get_database)):
     description="Fetches persistent conversational messages for the authenticated user from MongoDB Atlas.",
 )
 async def get_user_chat_history(
+    conversation_id: Optional[str] = None,
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> ChatHistoryResponse:
     chat_repo = ChatRepository(db)
-    messages = await chat_repo.get_history(user_id=current_user.id, limit=100)
+    messages = await chat_repo.get_history(user_id=current_user.id, conversation_id=conversation_id, limit=100)
     parsed_messages = []
     for m in messages:
         try:
             parsed_messages.append(ChatMessageSchema(**m))
         except Exception as e:
             logger.warning(f"Error parsing chat message: {e}")
-    return ChatHistoryResponse(messages=parsed_messages, total=len(parsed_messages))
+    return ChatHistoryResponse(messages=parsed_messages, total=len(parsed_messages), conversation_id=conversation_id)
 
 
 @router.delete(
@@ -84,16 +151,20 @@ async def interpret_user_command(
     user_role_str = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
     cmd = payload.command.strip()
     cmd_lower = cmd.lower()
-    now_str = datetime.now(timezone.utc).strftime("%I:%M %p")
+    now_dt = datetime.now(timezone.utc)
+    now_str = now_dt.isoformat()
+    conv_id = payload.conversation_id or f"SES-{uuid.uuid4().hex[:10]}"
 
     # Record User Message in Atlas
     user_msg_id = f"MSG-U-{uuid.uuid4().hex[:8]}"
     await chat_repo.add_message({
         "id": user_msg_id,
         "user_id": current_user.id,
+        "conversation_id": conv_id,
         "sender": "user",
         "content": cmd,
         "timestamp": now_str,
+        "created_at": now_dt,
     })
 
     # --------------------------------------------------------------------------
@@ -142,9 +213,11 @@ async def interpret_user_command(
             await chat_repo.add_message({
                 "id": asst_msg_id,
                 "user_id": current_user.id,
+                "conversation_id": conv_id,
                 "sender": "assistant",
                 "content": asst_content,
                 "timestamp": now_str,
+                "created_at": now_dt,
                 "intent": "confirm_action",
                 "action_id": act_id,
                 "execution_status": "EXECUTED",
@@ -171,6 +244,7 @@ async def interpret_user_command(
                 action_id=act_id,
                 execution_result=confirm_res.execution_result,
                 conversational_message=asst_content,
+                conversation_id=conv_id,
             )
         except Exception as e:
             logger.error(f"Conversational confirmation failed: {e}")
@@ -184,6 +258,7 @@ async def interpret_user_command(
                 confidence=0.5,
                 candidate_tools_count=0,
                 conversational_message=error_content,
+                conversation_id=conv_id,
             )
 
     # --------------------------------------------------------------------------
@@ -209,9 +284,11 @@ async def interpret_user_command(
         await chat_repo.add_message({
             "id": asst_msg_id,
             "user_id": current_user.id,
+            "conversation_id": conv_id,
             "sender": "assistant",
             "content": asst_content,
             "timestamp": now_str,
+            "created_at": now_dt,
             "intent": "cancel_action",
             "action_id": act_id,
             "execution_status": "REJECTED",
@@ -230,6 +307,7 @@ async def interpret_user_command(
             candidate_tools_count=1,
             action_id=act_id,
             conversational_message=asst_content,
+            conversation_id=conv_id,
         )
 
     # --------------------------------------------------------------------------
@@ -295,9 +373,11 @@ async def interpret_user_command(
         await chat_repo.add_message({
             "id": asst_msg_id,
             "user_id": current_user.id,
+            "conversation_id": conv_id,
             "sender": "assistant",
             "content": asst_content,
             "timestamp": now_str,
+            "created_at": now_dt,
             "intent": "edit_action",
             "action_id": act_id,
             "approval_required": True,
@@ -323,6 +403,7 @@ async def interpret_user_command(
             action_id=act_id,
             execution_preview=preview_data,
             conversational_message=asst_content,
+            conversation_id=conv_id,
         )
 
     # --------------------------------------------------------------------------
@@ -334,8 +415,8 @@ async def interpret_user_command(
         limit=5,
     )
 
-    # Retrieve prior conversation context to support multi-turn disambiguation
-    history_docs = await chat_repo.get_history(user_id=current_user.id, limit=6)
+    # Retrieve prior conversation context to support multi-turn disambiguation within this session
+    history_docs = await chat_repo.get_history(user_id=current_user.id, conversation_id=conv_id, limit=10)
     prev_history = [doc for doc in history_docs if doc.get("id") != user_msg_id]
 
     req_id = f"REQ-{uuid.uuid4().hex[:6]}"
@@ -401,6 +482,12 @@ async def interpret_user_command(
         if action_type == "UPDATE_CARD" and params.get("member_name"):
             conversational_message = (
                 f"I have prepared a draft to assign '{params.get('member_name')}' to '{draft_response.draft.title}'. "
+                "Please review the preview below and confirm to execute it on Trello."
+            )
+        elif action_type == "UPDATE_CARD" and (params.get("new_due_date") or params.get("due_date") or params.get("due")):
+            resolved_due = params.get("new_due_date") or params.get("due_date") or params.get("due")
+            conversational_message = (
+                f"I have prepared a draft to set due date '{resolved_due}' on '{draft_response.draft.title}'. "
                 "Please review the preview below and confirm to execute it on Trello."
             )
         else:
@@ -474,9 +561,11 @@ async def interpret_user_command(
     await chat_repo.add_message({
         "id": asst_msg_id,
         "user_id": current_user.id,
+        "conversation_id": conv_id,
         "sender": "assistant",
         "content": conversational_message,
         "timestamp": now_str,
+        "created_at": now_dt,
         "intent": intent_output.intent,
         "parameters": intent_output.parameters,
         "selected_tool_id": selected_tool.tool_id if selected_tool else None,
@@ -510,4 +599,5 @@ async def interpret_user_command(
         action_id=generated_action_id,
         execution_result=execution_result_data,
         conversational_message=conversational_message,
+        conversation_id=conv_id,
     )

@@ -27,7 +27,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({
 
       {/* Main Panel */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <TopNavbar currentTab={currentTab} />
+        <TopNavbar currentTab={currentTab} onTabChange={onTabChange} />
         <main className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6">
           <div className="max-w-7xl mx-auto w-full space-y-6">
             {children}

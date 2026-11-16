@@ -22,12 +22,14 @@ import {
   ListTodo,
   Search,
   CheckCircle2,
+  MessageSquare,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { DemoBanner } from '../components/common/DemoBanner';
-import { ChatMessage, ActionApprovalPreview, ApprovalEditPayload } from '../types';
+import { ChatMessage, ActionApprovalPreview, ApprovalEditPayload, ChatSession } from '../types';
 import { useAuth } from '../context/AuthContext';
 import {
   interpretCommand,
@@ -36,6 +38,9 @@ import {
   cancelApproval,
   fetchChatHistory,
   clearChatHistory,
+  fetchChatSessions,
+  fetchSessionChatHistory,
+  deleteChatSession,
 } from '../services/api';
 
 const WELCOME_MESSAGE: ChatMessage = {
@@ -58,6 +63,9 @@ All write operations present a live preview draft for your confirmation before e
 export const AIAssistantPage: React.FC = () => {
   const { isAuthenticated, openLoginModal, user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [isSessionsLoading, setIsSessionsLoading] = useState<boolean>(false);
   const [activeActionId, setActiveActionId] = useState<string | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -83,12 +91,86 @@ export const AIAssistantPage: React.FC = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const createNewSessionId = () =>
+    `SES-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 7)}`;
+
+  // Robust UTC parser ensuring ISO dates without 'Z' are treated as UTC
+  const parseAsUtcDate = (dateVal?: string | Date): Date | null => {
+    if (!dateVal) return null;
+    if (dateVal instanceof Date) return isNaN(dateVal.getTime()) ? null : dateVal;
+    let str = String(dateVal).trim();
+    if (!str) return null;
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(str) && !str.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(str)) {
+      str += 'Z';
+    }
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  const formatSessionTime = (dateStr?: string) => {
+    if (!dateStr) return '';
+    try {
+      const d = parseAsUtcDate(dateStr);
+      if (!d) return '';
+      const now = new Date();
+      const diffMs = now.getTime() - d.getTime();
+      if (diffMs < 0) return 'Just now';
+      const diffSecs = Math.floor(diffMs / 1000);
+      if (diffSecs < 60) return 'Just now';
+      const diffMins = Math.floor(diffSecs / 60);
+      if (diffMins < 60) return `${diffMins}m ago`;
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) return `${diffHours}h ago`;
+      const diffDays = Math.floor(diffHours / 24);
+      if (diffDays === 1) return 'Yesterday';
+      if (diffDays < 7) return `${diffDays}d ago`;
+      return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    } catch {
+      return '';
+    }
+  };
+
+  // Format due date for presentation (e.g. 2026-11-26 -> Nov 26, 2026)
+  const formatDueDateDisplay = (dateStr?: string) => {
+    if (!dateStr || dateStr === 'No due date') return 'No due date';
+    try {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        const d = new Date(year, month, day);
+        if (!isNaN(d.getTime())) {
+          return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+      }
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      }
+    } catch {
+      // fallback
+    }
+    return dateStr;
+  };
+
   // Convert backend ChatMessage to frontend ChatMessage
   const mapBackendMessage = (m: any): ChatMessage => {
     let approvalPreview: ActionApprovalPreview | undefined = undefined;
     const rawPreview = m.approval_preview || m.approvalPreview;
     if (rawPreview) {
       const draft = rawPreview.draft || rawPreview;
+      const rawParams = rawPreview.parameters || draft.parameters || m.parameters || {};
+      const resolvedDue =
+        draft.due_date ||
+        rawPreview.dueDate ||
+        rawPreview.due_date ||
+        rawParams.new_due_date ||
+        rawParams.due_date ||
+        rawParams.due ||
+        rawParams.date ||
+        undefined;
+
       approvalPreview = {
         actionId: rawPreview.action_id || rawPreview.actionId || m.parameters?.action_id || 'ACT-LIVE',
         actionType: rawPreview.action_type || rawPreview.actionType || 'MUTATION',
@@ -100,7 +182,7 @@ export const AIAssistantPage: React.FC = () => {
         listName: draft.list_name || rawPreview.listName || 'To Do',
         listId: draft.list_id || rawPreview.listId,
         priority: draft.priority || rawPreview.priority || 'MEDIUM',
-        dueDate: draft.due_date || rawPreview.dueDate || undefined,
+        dueDate: resolvedDue,
         parameters: rawPreview.parameters || draft.parameters || {},
         status: (rawPreview.status || 'PENDING') as any,
         createdAt: rawPreview.created_at || rawPreview.createdAt || new Date().toISOString(),
@@ -111,11 +193,26 @@ export const AIAssistantPage: React.FC = () => {
       };
     }
 
+    // Resolve clean local timestamp in user's local timezone
+    let resolvedTime = '';
+    const utcDate = parseAsUtcDate(m.created_at);
+    if (utcDate) {
+      resolvedTime = utcDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else if (m.timestamp && /^\d{4}-\d{2}-\d{2}T/.test(m.timestamp)) {
+      const d = parseAsUtcDate(m.timestamp);
+      if (d) resolvedTime = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    if (!resolvedTime) {
+      resolvedTime = m.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
     return {
       id: m.id || `MSG-${Date.now()}-${Math.random()}`,
+      conversation_id: m.conversation_id,
       sender: m.sender || 'assistant',
       content: m.content || '',
-      timestamp: m.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: resolvedTime,
+      created_at: m.created_at,
       intent: m.intent,
       parameters: m.parameters,
       isLiveApiResult: true,
@@ -125,40 +222,61 @@ export const AIAssistantPage: React.FC = () => {
     };
   };
 
-  // Load chat history from MongoDB Atlas on mount or when user authenticates
-  useEffect(() => {
-    let isMounted = true;
-    const loadHistory = async () => {
-      if (!isAuthenticated) return;
-      try {
-        const data = await fetchChatHistory();
-        if (!isMounted) return;
-        if (data && data.messages && data.messages.length > 0) {
-          const mapped = data.messages.map(mapBackendMessage);
-          setMessages(mapped);
+  const loadSessionMessages = async (sessionId: string) => {
+    setCurrentSessionId(sessionId);
+    setActiveActionId(null);
+    setEditingActionId(null);
+    try {
+      setIsLoading(true);
+      const data = await fetchSessionChatHistory(sessionId);
+      if (data && data.messages && data.messages.length > 0) {
+        const mapped = data.messages.map(mapBackendMessage);
+        setMessages(mapped);
 
-          // Find if there is an active pending action
-          const pendingMsg = [...mapped].reverse().find(
-            (msg) => msg.approvalPreview && msg.approvalPreview.status === 'PENDING'
-          );
-          if (pendingMsg?.approvalPreview?.actionId) {
-            setActiveActionId(pendingMsg.approvalPreview.actionId);
-          } else {
-            setActiveActionId(null);
-          }
-        } else {
-          setMessages([WELCOME_MESSAGE]);
-          setActiveActionId(null);
+        const pendingMsg = [...mapped].reverse().find(
+          (msg) => msg.approvalPreview && msg.approvalPreview.status === 'PENDING'
+        );
+        if (pendingMsg?.approvalPreview?.actionId) {
+          setActiveActionId(pendingMsg.approvalPreview.actionId);
         }
-      } catch (err) {
-        console.error('Failed to load chat history from Atlas:', err);
+      } else {
+        setMessages([WELCOME_MESSAGE]);
       }
-    };
+    } catch (err) {
+      console.error('Failed to load session messages:', err);
+      setMessages([WELCOME_MESSAGE]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    loadHistory();
-    return () => {
-      isMounted = false;
-    };
+  const loadSessionsAndSelect = async (preferredSessionId?: string) => {
+    if (!isAuthenticated) return;
+    try {
+      setIsSessionsLoading(true);
+      const res = await fetchChatSessions();
+      const sessionList = res.sessions || [];
+      setSessions(sessionList);
+
+      const targetId = preferredSessionId || (sessionList.length > 0 ? sessionList[0].id : null);
+      if (targetId) {
+        await loadSessionMessages(targetId);
+      } else {
+        const freshId = createNewSessionId();
+        setCurrentSessionId(freshId);
+        setMessages([WELCOME_MESSAGE]);
+        setActiveActionId(null);
+      }
+    } catch (err) {
+      console.error('Failed to load chat sessions:', err);
+    } finally {
+      setIsSessionsLoading(false);
+    }
+  };
+
+  // Load chat sessions from MongoDB Atlas on mount or when user authenticates
+  useEffect(() => {
+    loadSessionsAndSelect();
   }, [isAuthenticated]);
 
   useEffect(() => {
@@ -177,8 +295,14 @@ export const AIAssistantPage: React.FC = () => {
 
     setInputValue('');
 
+    const effectiveSessionId = currentSessionId || createNewSessionId();
+    if (!currentSessionId) {
+      setCurrentSessionId(effectiveSessionId);
+    }
+
     const newUserMsg: ChatMessage = {
       id: `MSG-${Date.now()}`,
+      conversation_id: effectiveSessionId,
       sender: 'user',
       content: query,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -188,8 +312,12 @@ export const AIAssistantPage: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const res = await interpretCommand(query, activeActionId || undefined);
+      const res = await interpretCommand(query, activeActionId || undefined, effectiveSessionId);
       setIsLoading(false);
+
+      if (res.conversation_id && res.conversation_id !== currentSessionId) {
+        setCurrentSessionId(res.conversation_id);
+      }
 
       let content = res.conversational_message || '';
       if (!content) {
@@ -251,6 +379,16 @@ export const AIAssistantPage: React.FC = () => {
         const resolvedActionId = res.action_id || p.action_id;
         setActiveActionId(resolvedActionId);
 
+        const rawParams = p.parameters || draft.parameters || res.parameters || {};
+        const resolvedDue =
+          draft.due_date ||
+          (p.parameters?.due_date as string) ||
+          (rawParams.new_due_date as string) ||
+          (rawParams.due_date as string) ||
+          (rawParams.due as string) ||
+          (rawParams.date as string) ||
+          undefined;
+
         approvalPreview = {
           actionId: resolvedActionId,
           actionType: (p.action_type || res.intent.toUpperCase() || 'CREATE_CARD') as any,
@@ -262,7 +400,7 @@ export const AIAssistantPage: React.FC = () => {
           listName: draft.list_name || (p.parameters?.list_name || p.parameters?.target_status || 'To Do') as string,
           listId: draft.list_id || undefined,
           priority: draft.priority || (p.parameters?.priority as string) || 'MEDIUM',
-          dueDate: draft.due_date || (p.parameters?.due_date as string) || undefined,
+          dueDate: resolvedDue,
           parameters: draft.parameters || p.parameters || {},
           status: (p.status || 'PENDING') as any,
           createdAt: new Date().toISOString(),
@@ -291,6 +429,13 @@ export const AIAssistantPage: React.FC = () => {
       };
 
       setMessages((prev) => [...prev, assistantMsg]);
+
+      // Refresh session list so updated title & timestamps appear in sidebar
+      fetchChatSessions().then((sRes) => {
+        if (sRes?.sessions) {
+          setSessions(sRes.sessions);
+        }
+      }).catch(() => {});
     } catch (err: any) {
       setIsLoading(false);
       const isAuthError = err.response?.status === 401;
@@ -432,17 +577,50 @@ export const AIAssistantPage: React.FC = () => {
     }
   };
 
-  const handleNewConversation = async () => {
+  const handleNewConversation = () => {
+    const freshId = createNewSessionId();
+    setCurrentSessionId(freshId);
+    setMessages([WELCOME_MESSAGE]);
+    setActiveActionId(null);
+    setEditingActionId(null);
+    setInputValue('');
+  };
+
+  const handleSelectSession = async (session: ChatSession) => {
+    if (session.id === currentSessionId && messages.length > 1) return;
+    await loadSessionMessages(session.id);
+  };
+
+  const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    if (!window.confirm('Delete this chat conversation?')) return;
+    try {
+      await deleteChatSession(sessionId);
+      const remaining = sessions.filter((s) => s.id !== sessionId);
+      setSessions(remaining);
+      if (currentSessionId === sessionId) {
+        if (remaining.length > 0) {
+          await loadSessionMessages(remaining[0].id);
+        } else {
+          handleNewConversation();
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete chat session:', err);
+    }
+  };
+
+  const handleClearAllHistory = async () => {
+    if (!window.confirm('Clear all conversation history? This cannot be undone.')) return;
     try {
       if (isAuthenticated) {
         await clearChatHistory();
       }
+      setSessions([]);
+      handleNewConversation();
     } catch (err) {
       console.error('Failed to clear chat history:', err);
     }
-    setMessages([WELCOME_MESSAGE]);
-    setActiveActionId(null);
-    setEditingActionId(null);
   };
 
   const samplePrompts = [
@@ -464,67 +642,91 @@ export const AIAssistantPage: React.FC = () => {
       {/* Main Dual-Panel Area */}
       <div className="flex-1 flex gap-6 min-h-0">
         {/* Left: Chat Overview & Status */}
-        <Card className="w-72 hidden lg:flex flex-col justify-between shrink-0">
-          <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
-              AI Conversation
+        <Card className="w-72 hidden lg:flex flex-col justify-between shrink-0 overflow-hidden">
+          <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-800 dark:text-slate-100 uppercase tracking-wider flex items-center space-x-1.5">
+              <MessageSquare className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+              <span>Chats</span>
             </span>
             <Button
-              variant="outline"
+              variant="primary"
               size="sm"
               onClick={handleNewConversation}
               icon={<Plus className="w-3.5 h-3.5" />}
+              className="text-xs py-1 px-2.5 h-7"
             >
               New Chat
             </Button>
           </div>
 
-          <div className="p-3 flex-1 overflow-y-auto space-y-2 text-xs">
-            <div className="p-3 rounded-xl bg-brand-50/70 dark:bg-brand-500/10 border border-brand-200/60 dark:border-brand-500/20 text-brand-900 dark:text-brand-300 font-medium">
-              <div className="flex items-center space-x-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span className="font-semibold text-xs">Live Session</span>
+          <div className="p-2 flex-1 overflow-y-auto space-y-1 text-xs">
+            {isSessionsLoading ? (
+              <div className="p-6 text-center text-slate-400 flex items-center justify-center space-x-2">
+                <Loader2 className="w-4 h-4 animate-spin text-brand-500" />
+                <span className="text-xs">Loading chats...</span>
               </div>
-              <p className="text-[11px] text-brand-700 dark:text-brand-400 mt-1">
-                Connected to MongoDB Atlas & Trello MCP.
-              </p>
-              {activeActionId && (
-                <div className="mt-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-700 dark:text-amber-400">
-                  <span className="font-medium block">Active Draft:</span>
-                  <code className="text-[10px]">{activeActionId}</code>
-                  <span className="block mt-0.5 text-[10px] text-slate-500">
-                    Reply &quot;Confirm&quot;, &quot;Cancel&quot;, or edit in chat.
-                  </span>
+            ) : sessions.length === 0 ? (
+              <div className="p-6 text-center space-y-2">
+                <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mx-auto">
+                  <Bot className="w-4 h-4" />
                 </div>
-              )}
-            </div>
+                <p className="text-[11px] text-slate-400">
+                  No previous chats yet. Type a command to start a new conversation!
+                </p>
+              </div>
+            ) : (
+              sessions.map((sess) => {
+                const isActive = sess.id === currentSessionId;
+                return (
+                  <div
+                    key={sess.id}
+                    onClick={() => handleSelectSession(sess)}
+                    className={`group relative flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all text-xs ${
+                      isActive
+                        ? 'bg-brand-500/10 dark:bg-brand-500/20 text-brand-700 dark:text-brand-300 font-medium border border-brand-500/30'
+                        : 'hover:bg-slate-100 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2 min-w-0 pr-6">
+                      <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'}`} />
+                      <div className="min-w-0">
+                        <span className="block truncate text-xs font-medium" title={sess.title}>
+                          {sess.title || 'Conversation'}
+                        </span>
+                        <span className="block text-[10px] text-slate-400 font-normal">
+                          {formatSessionTime(sess.updated_at || sess.created_at)}
+                        </span>
+                      </div>
+                    </div>
 
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400 space-y-2">
-              <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block">
-                Conversational Commands
-              </span>
-              <ul className="text-[10px] space-y-1 list-disc list-inside text-slate-500 dark:text-slate-400">
-                <li>Create task card ...</li>
-                <li>Move [Task] to [List]</li>
-                <li>Show cards in [List]</li>
-                <li>Find task [Name]</li>
-                <li>Update description of [Task]</li>
-                <li>Archive / Complete task [Name]</li>
-              </ul>
-            </div>
-
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400 space-y-1">
-              <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block">
-                Storage & History
-              </span>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                Chat history is automatically synced and persisted to your account in MongoDB Atlas.
-              </p>
-            </div>
+                    <button
+                      onClick={(e) => handleDeleteSession(e, sess.id)}
+                      title="Delete Chat"
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-400 hover:text-red-500 hover:bg-slate-200/50 dark:hover:bg-slate-700/50 transition-opacity"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })
+            )}
           </div>
 
-          <div className="p-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 text-xs">
-            <span className="text-[10px] text-slate-400 block font-mono">
+          <div className="p-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 text-xs space-y-1.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Atlas Synced</span>
+              </div>
+              <button
+                onClick={handleClearAllHistory}
+                className="text-[10px] text-slate-400 hover:text-red-500 transition-colors"
+                title="Clear all conversations"
+              >
+                Clear All
+              </button>
+            </div>
+            <span className="text-[10px] text-slate-400 block font-mono truncate">
               User: {user?.email || 'Authenticated'}
             </span>
           </div>
@@ -555,8 +757,8 @@ export const AIAssistantPage: React.FC = () => {
                   Sign In
                 </Button>
               )}
-              <Button variant="ghost" size="sm" onClick={handleNewConversation} icon={<RefreshCw className="w-3.5 h-3.5" />}>
-                Clear History
+              <Button variant="outline" size="sm" onClick={handleNewConversation} icon={<Plus className="w-3.5 h-3.5" />}>
+                New Chat
               </Button>
             </div>
           </div>
@@ -896,7 +1098,7 @@ export const AIAssistantPage: React.FC = () => {
                                 <span>Due Date</span>
                               </span>
                               <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block mt-0.5">
-                                {msg.approvalPreview.dueDate || 'No due date'}
+                                {formatDueDateDisplay(msg.approvalPreview.dueDate)}
                               </span>
                             </div>
                           </div>

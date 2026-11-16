@@ -6,6 +6,7 @@ from app.api.v1.endpoints import (
     auth,
     health,
     mcp,
+    notifications,
     overview,
     reports,
     tasks,
@@ -43,3 +44,6 @@ api_v1_router.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])
 api_v1_router.include_router(overview.router, prefix="/overview", tags=["Overview"])
 api_v1_router.include_router(activities.router, prefix="/activities", tags=["Activities"])
 api_v1_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
+
+# Real-time Dynamic Notifications
+api_v1_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])

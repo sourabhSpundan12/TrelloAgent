@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -6,26 +7,110 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 class ChatRepository:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.collection = db["chat_messages"]
+        self.sessions_collection = db["chat_sessions"]
 
     async def add_message(self, message_dict: Dict[str, Any]) -> Dict[str, Any]:
-        """Saves a chat message to MongoDB Atlas."""
-        message_dict.setdefault("created_at", datetime.now(timezone.utc))
+        """Saves a chat message to MongoDB Atlas and keeps conversation session metadata synced."""
+        now = datetime.now(timezone.utc)
+        message_dict.setdefault("created_at", now)
+        conv_id = message_dict.get("conversation_id")
+        user_id = message_dict.get("user_id")
+
         await self.collection.insert_one(message_dict)
         message_dict.pop("_id", None)
+
+        if conv_id and user_id:
+            existing = await self.sessions_collection.find_one({"id": conv_id, "user_id": user_id})
+            content_preview = str(message_dict.get("content", "")).strip()
+            clean_title = re.sub(r"\s+", " ", content_preview)[:45] or "New Chat"
+
+            if not existing:
+                title = clean_title if message_dict.get("sender") == "user" else "New Chat"
+                await self.sessions_collection.insert_one({
+                    "id": conv_id,
+                    "user_id": user_id,
+                    "title": title,
+                    "created_at": now,
+                    "updated_at": now,
+                    "message_count": 1,
+                })
+            else:
+                update_fields: Dict[str, Any] = {
+                    "updated_at": now,
+                }
+                # If existing title is generic and a user message arrives, update title
+                if existing.get("title") in ("New Chat", "New Conversation") and message_dict.get("sender") == "user" and clean_title:
+                    update_fields["title"] = clean_title
+
+                await self.sessions_collection.update_one(
+                    {"id": conv_id, "user_id": user_id},
+                    {
+                        "$set": update_fields,
+                        "$inc": {"message_count": 1},
+                    },
+                )
+
         return message_dict
 
-    async def get_history(self, user_id: str, limit: int = 100) -> List[Dict[str, Any]]:
+    async def list_sessions(self, user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Retrieves conversation sessions for a user in reverse chronological order."""
+        cursor = self.sessions_collection.find({"user_id": user_id}).sort("updated_at", -1).limit(limit)
+        sessions = []
+        async for doc in cursor:
+            doc.pop("_id", None)
+            sessions.append(doc)
+
+        # Backward compatibility: if no explicit sessions exist yet but user has messages
+        if not sessions:
+            legacy_count = await self.collection.count_documents({"user_id": user_id})
+            if legacy_count > 0:
+                first_user_msg = await self.collection.find_one({"user_id": user_id, "sender": "user"})
+                raw_title = first_user_msg.get("content", "General Chat") if first_user_msg else "General Chat"
+                title = re.sub(r"\s+", " ", str(raw_title))[:45]
+                default_session_id = "SES-DEFAULT"
+                now = datetime.now(timezone.utc)
+                await self.collection.update_many(
+                    {"user_id": user_id, "conversation_id": {"$exists": False}},
+                    {"$set": {"conversation_id": default_session_id}},
+                )
+                session_doc = {
+                    "id": default_session_id,
+                    "user_id": user_id,
+                    "title": title,
+                    "created_at": now,
+                    "updated_at": now,
+                    "message_count": legacy_count,
+                }
+                await self.sessions_collection.insert_one(dict(session_doc))
+                session_doc.pop("_id", None)
+                sessions.append(session_doc)
+
+        return sessions
+
+    async def get_history(
+        self, user_id: str, conversation_id: Optional[str] = None, limit: int = 100
+    ) -> List[Dict[str, Any]]:
         """Retrieves user conversation history in chronological order."""
-        cursor = self.collection.find({"user_id": user_id}).sort("created_at", 1).limit(limit)
+        query: Dict[str, Any] = {"user_id": user_id}
+        if conversation_id:
+            query["conversation_id"] = conversation_id
+        cursor = self.collection.find(query).sort("created_at", 1).limit(limit)
         messages = []
         async for doc in cursor:
             doc.pop("_id", None)
             messages.append(doc)
         return messages
 
+    async def delete_session(self, user_id: str, conversation_id: str) -> bool:
+        """Deletes a conversation session and all its messages."""
+        await self.collection.delete_many({"user_id": user_id, "conversation_id": conversation_id})
+        res = await self.sessions_collection.delete_one({"id": conversation_id, "user_id": user_id})
+        return res.deleted_count > 0
+
     async def clear_history(self, user_id: str) -> int:
-        """Clears all conversation history for a user."""
+        """Clears all conversation history and sessions for a user."""
         res = await self.collection.delete_many({"user_id": user_id})
+        await self.sessions_collection.delete_many({"user_id": user_id})
         return res.deleted_count
 
     async def update_action_status_in_chat(
