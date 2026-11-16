@@ -1,0 +1,112 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: agentic_mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=agentic_task_manager
+    volumes:
+      - mongodb_data:/data/db
+      - ./database/indexes/init_indexes.js:/docker-entrypoint-initdb.d/init_indexes.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - agentic_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: agentic_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - MONGODB_URL=${MONGODB_URL:-mongodb://mongodb:27017}
+      - MONGODB_URI=${MONGODB_URL:-mongodb://mongodb:27017}
+      - MONGODB_DATABASE=${MONGODB_DATABASE:-agentic_task_manager}
+      - MONGODB_DB_NAME=${MONGODB_DATABASE:-agentic_task_manager}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      - TRELLO_API_KEY=${TRELLO_API_KEY:-}
+      - TRELLO_TOKEN=${TRELLO_TOKEN:-}
+      - TRELLO_BOARD_ID=${TRELLO_BOARD_ID:-}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-agentic-secret-key-change-in-production-super-secure-token-32b}
+      - BOOTSTRAP_ADMIN_EMAIL=${BOOTSTRAP_ADMIN_EMAIL:-}
+      - BOOTSTRAP_ADMIN_PASSWORD=${BOOTSTRAP_ADMIN_PASSWORD:-}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - N8N_WEBHOOK_URL=http://n8n:5678/webhook
+      - N8N_API_KEY=${N8N_API_KEY:-}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - agentic_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: agentic_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+      - VITE_BACKEND_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - agentic_network
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: agentic_n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-admin12345}
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=UTC
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/data/workflows
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:5678/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - agentic_network
+
+networks:
+  agentic_network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+    driver: local
+  n8n_data:
+    driver: local

@@ -1,0 +1,95 @@
+import { Employee } from '../types';
+
+export const MOCK_EMPLOYEES: Employee[] = [
+  {
+    id: 'EMP-001',
+    empId: 'EMP-101',
+    name: 'Sarah Connor',
+    email: 's.connor@example.com',
+    role: 'Lead Security Engineer',
+    department: 'Platform Security',
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop&crop=faces',
+    status: 'ACTIVE',
+    assignedTasksCount: 8,
+    inProgressCount: 2, // Actively in progress
+    inReviewCount: 1,
+    completedCount: 12,
+    overdueCount: 1,
+  },
+  {
+    id: 'EMP-002',
+    empId: 'EMP-102',
+    name: 'Alex Rivera',
+    email: 'a.rivera@example.com',
+    role: 'Senior Backend Architect',
+    department: 'Core Architecture',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=faces',
+    status: 'ACTIVE',
+    assignedTasksCount: 7,
+    inProgressCount: 3, // Actively in progress
+    inReviewCount: 1,
+    completedCount: 15,
+    overdueCount: 0,
+  },
+  {
+    id: 'EMP-003',
+    empId: 'EMP-103',
+    name: 'Marcus Vance',
+    email: 'm.vance@example.com',
+    role: 'DevOps & Integrations Lead',
+    department: 'Infrastructure',
+    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop&crop=faces',
+    status: 'ACTIVE',
+    assignedTasksCount: 5,
+    inProgressCount: 1, // Actively in progress
+    inReviewCount: 2,
+    completedCount: 9,
+    overdueCount: 0,
+  },
+  {
+    id: 'EMP-004',
+    empId: 'EMP-104',
+    name: 'Elena Rostova',
+    email: 'e.rostova@example.com',
+    role: 'Data & Analytics Engineer',
+    department: 'Data Intelligence',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=faces',
+    status: 'ACTIVE',
+    assignedTasksCount: 6,
+    inProgressCount: 1, // Actively in progress
+    inReviewCount: 0,
+    completedCount: 11,
+    overdueCount: 0,
+  },
+  {
+    id: 'EMP-005',
+    empId: 'EMP-105',
+    name: 'Liam Chen',
+    email: 'l.chen@example.com',
+    role: 'Staff Frontend Engineer',
+    department: 'User Experience',
+    avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=100&h=100&fit=crop&crop=faces',
+    status: 'ACTIVE',
+    assignedTasksCount: 6,
+    inProgressCount: 2, // Actively in progress
+    inReviewCount: 1,
+    completedCount: 14,
+    overdueCount: 0,
+  },
+  {
+    id: 'EMP-006',
+    empId: 'EMP-106',
+    name: 'Chloe Bennett',
+    email: 'c.bennett@example.com',
+    role: 'QA & Compliance Specialist',
+    department: 'Quality Assurance',
+    avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=100&h=100&fit=crop&crop=faces',
+    status: 'AWAY',
+    assignedTasksCount: 4,
+    inProgressCount: 0, // No active tasks right now
+    inReviewCount: 1,
+    completedCount: 8,
+    overdueCount: 0,
+  }
+];
+

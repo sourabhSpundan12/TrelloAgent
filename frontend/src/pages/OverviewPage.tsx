@@ -1,0 +1,326 @@
+import React, { useState, useEffect } from 'react';
+import {
+  CheckSquare,
+  Clock,
+  Eye,
+  ListTodo,
+  CheckCircle2,
+  Wrench,
+  ShieldCheck,
+  Calendar,
+  ArrowRight,
+  ExternalLink,
+  Bot,
+  RefreshCw,
+} from 'lucide-react';
+import { StatCard } from '../components/common/StatCard';
+import { Card, CardHeader, CardContent } from '../components/common/Card';
+import { DemoBanner } from '../components/common/DemoBanner';
+import { Button } from '../components/common/Button';
+import { Badge } from '../components/common/Badge';
+import { useAuth } from '../context/AuthContext';
+import { fetchOverviewStats } from '../services/api';
+
+interface OverviewPageProps {
+  onNavigate: (tab: string) => void;
+}
+
+export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
+  const { isAuthenticated } = useAuth();
+  const [stats, setStats] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const loadStats = async () => {
+    if (!isAuthenticated) return;
+    setIsLoading(true);
+    try {
+      const data = await fetchOverviewStats();
+      if (data && data.status === 'SUCCESS') {
+        setStats(data);
+      }
+    } catch (err) {
+      console.error('Failed to load overview stats:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadStats();
+  }, [isAuthenticated]);
+
+  const tasks = stats?.tasks || { total: 0, todo: 0, doing: 0, done: 0, completion_rate: 0 };
+  const system = stats?.system || { active_tools: 9, pending_approvals: 0, executed_mutations: 0 };
+  const recentActivities: any[] = stats?.recent_activities || [];
+
+  const donePercent = tasks.total > 0 ? Math.round((tasks.done / tasks.total) * 100) : 0;
+  const doingPercent = tasks.total > 0 ? Math.round((tasks.doing / tasks.total) * 100) : 0;
+  const todoPercent = tasks.total > 0 ? Math.round((tasks.todo / tasks.total) * 100) : 0;
+
+  return (
+    <div className="space-y-6">
+      <DemoBanner
+        mode="live"
+        message="Live System Overview: Metrics synchronized directly from live Trello board via MCP and pending actions in MongoDB Atlas."
+      />
+
+      {/* Header Action Bar */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            System Operational Overview
+          </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Real-time status of Trello tasks, MCP tools, and human-in-the-loop approvals
+          </p>
+        </div>
+        <div className="flex items-center space-x-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={loadStats}
+            disabled={isLoading}
+            icon={<RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />}
+          >
+            Refresh
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => onNavigate('ai-assistant')}
+            icon={<Bot className="w-3.5 h-3.5" />}
+          >
+            Open AI Assistant
+          </Button>
+        </div>
+      </div>
+
+      {/* 6 Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <StatCard
+          title="Total Cards"
+          value={tasks.total}
+          icon={CheckSquare}
+          color="slate"
+          subtitle="Configured Trello Board"
+          onClick={() => onNavigate('tasks')}
+        />
+        <StatCard
+          title="Completed"
+          value={tasks.done}
+          icon={CheckCircle2}
+          color="emerald"
+          trend={{ value: `${donePercent}% done`, isPositive: true }}
+          onClick={() => onNavigate('tasks')}
+        />
+        <StatCard
+          title="In Progress / Doing"
+          value={tasks.doing}
+          icon={Clock}
+          color="blue"
+          subtitle="Actively worked on"
+          onClick={() => onNavigate('tasks')}
+        />
+        <StatCard
+          title="To Do"
+          value={tasks.todo}
+          icon={ListTodo}
+          color="purple"
+          subtitle="Sprint backlog queue"
+          onClick={() => onNavigate('tasks')}
+        />
+        <StatCard
+          title="Active MCP Tools"
+          value={system.active_tools}
+          icon={Wrench}
+          color="slate"
+          subtitle="MongoDB Tool Registry"
+          onClick={() => onNavigate('tools')}
+        />
+        <StatCard
+          title="Executed Actions"
+          value={system.executed_mutations}
+          icon={ShieldCheck}
+          color="amber"
+          subtitle="Approved mutations"
+          onClick={() => onNavigate('activity')}
+        />
+      </div>
+
+      {/* Main Grid: Status Distribution & AI Integration Highlights */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* 1. Live Task Distribution by Status */}
+        <Card className="lg:col-span-1">
+          <CardHeader
+            title="Trello List Breakdown"
+            subtitle="Live cards across configured board lists"
+            action={
+              <Button variant="ghost" size="sm" onClick={() => onNavigate('tasks')}>
+                View Board
+              </Button>
+            }
+          />
+          <CardContent className="space-y-4">
+            {/* Multi-segment Progress Bar */}
+            <div className="h-3 w-full rounded-full bg-slate-100 dark:bg-slate-800 flex overflow-hidden">
+              <div style={{ width: `${donePercent}%` }} className="bg-emerald-500 h-full" title={`Completed: ${donePercent}%`} />
+              <div style={{ width: `${doingPercent}%` }} className="bg-sky-500 h-full" title={`In Progress: ${doingPercent}%`} />
+              <div style={{ width: `${todoPercent}%` }} className="bg-slate-400 dark:bg-slate-600 h-full" title={`TODO: ${todoPercent}%`} />
+            </div>
+
+            {/* Status Legend Breakdown */}
+            <div className="space-y-3 pt-2">
+              {[
+                { label: 'Completed (Done)', count: tasks.done, percent: donePercent, color: 'bg-emerald-500' },
+                { label: 'In Progress (Doing)', count: tasks.doing, percent: doingPercent, color: 'bg-sky-500' },
+                { label: 'Pending (To Do)', count: tasks.todo, percent: todoPercent, color: 'bg-slate-400 dark:bg-slate-600' },
+              ].map((item) => (
+                <div key={item.label} className="flex items-center justify-between text-xs">
+                  <div className="flex items-center space-x-2">
+                    <span className={`w-2.5 h-2.5 rounded-full ${item.color}`} />
+                    <span className="text-slate-700 dark:text-slate-300 font-medium">{item.label}</span>
+                  </div>
+                  <div className="flex items-center space-x-3 text-slate-500 dark:text-slate-400">
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">{item.count}</span>
+                    <span className="w-8 text-right font-mono">{item.percent}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between">
+              <span>Overall sprint completion:</span>
+              <span className="font-bold text-emerald-600 dark:text-emerald-400">{donePercent}%</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 2. Conversational Agent Pipeline Status */}
+        <Card className="lg:col-span-2">
+          <CardHeader
+            title="Conversational AI Agent Architecture"
+            subtitle="Human-in-the-Loop Execution Pipeline (Phase 7A)"
+            action={
+              <Button variant="primary" size="sm" onClick={() => onNavigate('ai-assistant')} icon={<Bot className="w-3.5 h-3.5" />}>
+                Chat with Assistant
+              </Button>
+            }
+          />
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+              <div className="p-3.5 rounded-xl border border-brand-200 dark:border-brand-500/20 bg-brand-50/40 dark:bg-brand-500/5 space-y-1.5">
+                <span className="font-semibold text-brand-900 dark:text-brand-300 block flex items-center space-x-1.5">
+                  <Bot className="w-4 h-4 text-brand-600" />
+                  <span>1. Natural Interface</span>
+                </span>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                  Users manage tasks using natural language in chat. Gemini 3.5 Flash Lite parses intents and parameters with zero manual forms needed.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl border border-amber-200 dark:border-amber-500/20 bg-amber-50/40 dark:bg-amber-500/5 space-y-1.5">
+                <span className="font-semibold text-amber-900 dark:text-amber-300 block flex items-center space-x-1.5">
+                  <ShieldCheck className="w-4 h-4 text-amber-600" />
+                  <span>2. Live Draft Preview</span>
+                </span>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                  Mutations generate structured previews in Atlas. Users can reply &quot;Confirm&quot;, &quot;Cancel&quot;, or request edits in chat before any write occurs.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-500/20 bg-emerald-50/40 dark:bg-emerald-500/5 space-y-1.5">
+                <span className="font-semibold text-emerald-900 dark:text-emerald-300 block flex items-center space-x-1.5">
+                  <Wrench className="w-4 h-4 text-emerald-600" />
+                  <span>3. MCP Execution</span>
+                </span>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                  Upon approval, actions execute atomically through the Model Context Protocol (MCP) tool registry, syncing real cards to Trello.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+              <span className="text-slate-600 dark:text-slate-400">
+                Pending approvals awaiting user confirmation:
+              </span>
+              <Badge variant={system.pending_approvals > 0 ? 'warning' : 'neutral'}>
+                {system.pending_approvals} Pending
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Second Row: Recent Actions from MongoDB Atlas */}
+      <Card>
+        <CardHeader
+          title="Recent AI & MCP Actions"
+          subtitle="Live audit trail from MongoDB Atlas pending_actions"
+          action={
+            <Button variant="ghost" size="sm" onClick={() => onNavigate('activity')}>
+              View All History
+            </Button>
+          }
+        />
+        <CardContent>
+          {recentActivities.length === 0 ? (
+            <p className="text-xs text-slate-400 py-4 text-center italic">
+              No recent actions recorded. Try asking the AI Assistant: &quot;Create a task card Login API&quot;.
+            </p>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {recentActivities.map((act, idx) => (
+                <div key={act.action_id || idx} className="py-3 flex items-center justify-between text-xs">
+                  <div className="flex items-center space-x-3 min-w-0 pr-3">
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${
+                        act.status === 'EXECUTED'
+                          ? 'bg-emerald-500'
+                          : act.status === 'REJECTED'
+                          ? 'bg-rose-500'
+                          : 'bg-amber-500 animate-pulse'
+                      }`}
+                    />
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-900 dark:text-slate-100 truncate">
+                        {act.title}
+                      </p>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {act.action_id} • {act.tool_name}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-3 shrink-0">
+                    <Badge
+                      variant={
+                        act.status === 'EXECUTED'
+                          ? 'success'
+                          : act.status === 'REJECTED'
+                          ? 'danger'
+                          : 'warning'
+                      }
+                    >
+                      {act.status}
+                    </Badge>
+                    {act.card_url && (
+                      <a
+                        href={act.card_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-brand-600 hover:text-brand-500 p-1"
+                        title="View Card in Trello"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
