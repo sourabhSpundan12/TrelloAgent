@@ -186,14 +186,14 @@ export const SettingsPage: React.FC = () => {
                 subtitle="Select your preferred dashboard visual theme"
               />
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Light Theme Card */}
                   <div
                     onClick={() => setTheme('light')}
                     className={`p-5 rounded-2xl border-2 cursor-pointer transition text-center space-y-3 ${
                       theme === 'light'
-                        ? 'border-brand-500 bg-brand-50/20 dark:bg-brand-500/10'
-                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
+                        ? 'border-brand-500 bg-brand-50/20 dark:bg-brand-500/10 shadow-sm'
+                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                     }`}
                   >
                     <div className="p-3 mx-auto w-fit rounded-xl bg-amber-500/10 text-amber-600">
@@ -201,10 +201,12 @@ export const SettingsPage: React.FC = () => {
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">Light Theme</h4>
-                      <p className="text-xs text-slate-500 mt-0.5">Clean enterprise standard (Default)</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Clean enterprise standard</p>
                     </div>
                     {theme === 'light' && (
-                      <Badge variant="success">Active Theme</Badge>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-brand-500/15 text-brand-700 dark:text-brand-300 border border-brand-500/30">
+                        Active Theme
+                      </span>
                     )}
                   </div>
 
@@ -213,8 +215,8 @@ export const SettingsPage: React.FC = () => {
                     onClick={() => setTheme('dark')}
                     className={`p-5 rounded-2xl border-2 cursor-pointer transition text-center space-y-3 ${
                       theme === 'dark'
-                        ? 'border-brand-500 bg-brand-50/20 dark:bg-brand-500/10'
-                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
+                        ? 'border-brand-500 bg-brand-50/20 dark:bg-brand-500/10 shadow-sm'
+                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                     }`}
                   >
                     <div className="p-3 mx-auto w-fit rounded-xl bg-slate-700 text-slate-200">
@@ -225,7 +227,9 @@ export const SettingsPage: React.FC = () => {
                       <p className="text-xs text-slate-500 mt-0.5">High-contrast dark mode for low-light</p>
                     </div>
                     {theme === 'dark' && (
-                      <Badge variant="success">Active Theme</Badge>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-brand-500/15 text-brand-700 dark:text-brand-300 border border-brand-500/30">
+                        Active Theme
+                      </span>
                     )}
                   </div>
                 </div>
