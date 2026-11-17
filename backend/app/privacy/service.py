@@ -253,8 +253,8 @@ class PIIService:
             span_text = text[r.start:r.end].strip().lower()
             tokens = span_text.split()
 
-            # Task management safety: If entity is PERSON, do not falsely mask standard action verbs or technical objects
-            if r.entity_type == "PERSON":
+            # Task management safety: If entity is PERSON, LOCATION, GPE, ORGANIZATION, or NRP, do not falsely mask standard action verbs or technical objects
+            if r.entity_type in ("PERSON", "LOCATION", "GPE", "ORGANIZATION", "NRP"):
                 pronouns_and_non_names = {
                     "it", "this", "that", "them", "me", "us", "you", "him", "her", "his",
                     "their", "its", "which", "what", "where", "when", "why", "how",
@@ -267,12 +267,14 @@ class PIIService:
                     "create", "email", "send", "call", "move", "add", "delete",
                     "remove", "update", "edit", "list", "review", "assign",
                     "notify", "check", "get", "post", "put", "close", "open",
-                    "schedule", "start", "stop", "run", "make", "view", "show"
+                    "schedule", "start", "stop", "run", "make", "view", "show",
+                    "login", "logout", "signin", "signup", "sign in", "sign up", "log in", "log out"
                 }
                 technical_terms = {
-                    "api", "card", "board", "task", "list", "login", "repo", "db",
+                    "api", "card", "board", "task", "list", "login", "logout", "signin", "signup",
+                    "sign-in", "sign-up", "log-in", "log-out", "repo", "db",
                     "app", "ui", "server", "code", "database", "frontend", "backend",
-                    "auth", "endpoint", "workflow", "pipeline", "bug", "feature",
+                    "auth", "authentication", "endpoint", "workflow", "pipeline", "bug", "feature",
                     "test", "deploy", "release", "doc", "docs", "stack", "fullstack",
                     "full stack", "devops", "qa", "react", "python", "node", "java",
                     "spring", "docker", "k8s", "kubernetes", "aws", "gcp", "azure",
@@ -284,7 +286,7 @@ class PIIService:
                     "onboard", "onboarding", "offboarding", "training", "meeting",
                     "sync", "standup", "deliverable", "deliverables", "requirement",
                     "requirements", "scope", "design", "wireframe", "milestone",
-                    "sprint", "backlog", "client onboarding", "client onboard"
+                    "sprint", "backlog", "client onboarding", "client onboard", "guide", "starter"
                 }
                 if span_text in action_verbs:
                     continue
@@ -294,10 +296,10 @@ class PIIService:
                     continue
 
                 # Context check: Check if span immediately follows card creation prefix
-                # e.g. "create a task card Full Stack" -> "Full Stack" is the title of the card
+                # e.g. "create a task card Full Stack" or "create a task card Logout"
                 prefix_text = text[:r.start].lower().strip()
                 if re.search(
-                    r"(?:create|add|new)\s+(?:a\s+)?(?:task\s+card|card|task)(?:\s+named|\s+called|\s*:\s*)?\s*$",
+                    r"(?:create|add|new|update|move|delete)\s+(?:a\s+)?(?:task\s+card|card|task)(?:\s+named|\s+called|\s*:\s*)?\s*$",
                     prefix_text,
                 ):
                     continue

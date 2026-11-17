@@ -269,6 +269,7 @@ class MockTrelloMoveCardExecutor(BaseExecutor):
                 from app.mcp_server import trello_tools
                 card_id = parameters.get("card_id")
                 list_id = parameters.get("list_id")
+                board_id = parameters.get("board_id") or settings.TRELLO_BOARD_ID or None
 
                 # Resolve card_id dynamically if missing
                 if not card_id or card_id.startswith("card_") or card_id == "c101":
@@ -386,9 +387,10 @@ class MockTrelloUpdateCardExecutor(BaseExecutor):
             try:
                 from app.mcp_server import trello_tools
                 card_id = parameters.get("card_id")
+                board_id = parameters.get("board_id") or settings.TRELLO_BOARD_ID or None
 
                 if not card_id or card_id == "c101":
-                    cards_res = await trello_tools.trello_list_cards()
+                    cards_res = await trello_tools.trello_list_cards(board_id=board_id)
                     matched_c = find_best_matching_card(cards_res.get("cards", []), card_name)
                     if matched_c:
                         card_id = matched_c["id"]
@@ -403,6 +405,7 @@ class MockTrelloUpdateCardExecutor(BaseExecutor):
                         desc=desc or None,
                         due_date=parameters.get("due_date") or parameters.get("new_due_date") or parameters.get("due"),
                         member_name=member_name,
+                        board_id=board_id,
                     )
                     if up_res.get("status") == "SUCCESS":
                         return ExecutionResult(
@@ -413,6 +416,25 @@ class MockTrelloUpdateCardExecutor(BaseExecutor):
                             result=up_res,
                             message=f"Card '{card_name}' updated successfully via MCP.",
                         )
+                    else:
+                        error_msg = up_res.get("message") or "Failed updating card on Trello."
+                        return ExecutionResult(
+                            tool_id=tool.get("tool_id", "trello_update_card"),
+                            status="ERROR",
+                            is_mutation=True,
+                            preview=preview,
+                            result=up_res,
+                            message=f"Trello update failed: {error_msg}",
+                        )
+                else:
+                    return ExecutionResult(
+                        tool_id=tool.get("tool_id", "trello_update_card"),
+                        status="ERROR",
+                        is_mutation=True,
+                        preview=preview,
+                        result={"error": f"Card '{card_name}' not found on active board."},
+                        message=f"Could not find card '{card_name}' on the active Trello board.",
+                    )
             except Exception as exc:
                 logger.warning(f"Live Trello update via MCP failed: {exc}")
 
@@ -459,10 +481,54 @@ class MockTrelloArchiveCardExecutor(BaseExecutor):
         if settings.TRELLO_API_KEY and settings.TRELLO_TOKEN:
             try:
                 from app.mcp_server import trello_tools
+                board_id = parameters.get("board_id") or settings.TRELLO_BOARD_ID or None
                 card_id = parameters.get("card_id")
+                raw_target = (parameters.get("card_name") or parameters.get("name") or parameters.get("list_name") or card_name).strip()
 
+                def norm_name(n: str) -> str:
+                    return re.sub(r"[\s\-_]+", "", n.lower())
+
+                # 1. Check if raw_target matches a LIST on the board (e.g. "Trello Starter Guide")
+                lists_res = await trello_tools.trello_list_lists(board_id=board_id)
+                board_lists = lists_res.get("lists", [])
+                matching_list = None
+                t_norm = norm_name(raw_target)
+                for bl in board_lists:
+                    bl_norm = norm_name(bl["name"])
+                    is_typo = (
+                        ("starter" in t_norm and "starter" in bl_norm)
+                        or ("started" in t_norm and "starter" in bl_norm)
+                        or ("starter" in t_norm and "started" in bl_norm)
+                    )
+                    if t_norm == bl_norm or t_norm in bl_norm or bl_norm in t_norm or is_typo:
+                        matching_list = bl
+                        break
+
+                if matching_list:
+                    # Fetch all cards in that list
+                    cards_res = await trello_tools.trello_list_cards(board_id=board_id, list_id=matching_list["id"])
+                    list_cards = cards_res.get("cards", [])
+                    deleted_names = []
+                    for c in list_cards:
+                        try:
+                            await trello_tools.trello_delete_card(card_id=c["id"])
+                            deleted_names.append(c.get("name", "Card"))
+                        except Exception as e:
+                            logger.warning(f"Failed deleting card {c.get('id')}: {e}")
+
+                    msg = f"Successfully deleted {len(deleted_names)} card(s) from '{matching_list['name']}' list on Trello."
+                    return ExecutionResult(
+                        tool_id=tool.get("tool_id", "trello_delete_card"),
+                        status="SUCCESS",
+                        is_mutation=True,
+                        preview=preview,
+                        result={"status": "SUCCESS", "deleted_cards": deleted_names, "total_deleted": len(deleted_names), "list_name": matching_list["name"]},
+                        message=msg,
+                    )
+
+                # 2. Otherwise, single card deletion
                 if not card_id or card_id == "c101":
-                    cards_res = await trello_tools.trello_list_cards()
+                    cards_res = await trello_tools.trello_list_cards(board_id=board_id)
                     matched_c = find_best_matching_card(cards_res.get("cards", []), card_name)
                     if matched_c:
                         card_id = matched_c["id"]
@@ -552,7 +618,41 @@ class MockTrelloSearchExecutor(BaseExecutor):
                 board_id = parameters.get("board_id") or settings.TRELLO_BOARD_ID or None
                 cards_res = await trello_tools.trello_list_cards(board_id=board_id)
                 lists_res = await trello_tools.trello_list_lists(board_id=board_id)
-                list_map = {l["id"]: l["name"] for l in lists_res.get("lists", [])}
+                board_lists = lists_res.get("lists", [])
+                list_map = {l["id"]: l["name"] for l in board_lists}
+
+                # Check if query or raw_list_filter matches any list on the board
+                matching_list_name = None
+                if raw_list_filter:
+                    rf_norm = norm_list_name(raw_list_filter)
+                    for bl in board_lists:
+                        bl_norm = norm_list_name(bl["name"])
+                        is_typo = (
+                            ("starter" in rf_norm and "starter" in bl_norm)
+                            or ("started" in rf_norm and "starter" in bl_norm)
+                            or ("starter" in rf_norm and "started" in bl_norm)
+                        )
+                        if rf_norm == bl_norm or rf_norm in bl_norm or bl_norm in rf_norm or is_typo:
+                            matching_list_name = bl["name"]
+                            break
+
+                if not matching_list_name and query and query not in ("card", "cards", "task", "tasks", "list", "lists", "all"):
+                    q_norm = norm_list_name(query)
+                    for bl in board_lists:
+                        bl_norm = norm_list_name(bl["name"])
+                        is_typo = (
+                            ("starter" in q_norm and "starter" in bl_norm)
+                            or ("started" in q_norm and "starter" in bl_norm)
+                            or ("starter" in q_norm and "started" in bl_norm)
+                        )
+                        if q_norm == bl_norm or q_norm in bl_norm or bl_norm in q_norm or query in bl["name"].lower() or bl["name"].lower() in query or is_typo:
+                            matching_list_name = bl["name"]
+                            query = ""
+                            break
+
+                if matching_list_name:
+                    raw_list_filter = matching_list_name
+                    target_norm = norm_list_name(matching_list_name)
 
                 cards = []
                 for c in cards_res.get("cards", []):
@@ -568,10 +668,19 @@ class MockTrelloSearchExecutor(BaseExecutor):
                         "due": c.get("due"),
                     }
                     if target_norm:
-                        if target_norm != c_norm and target_norm not in c_norm and c_norm not in target_norm:
+                        is_typo = (
+                            ("starter" in target_norm and "starter" in c_norm)
+                            or ("started" in target_norm and "starter" in c_norm)
+                            or ("starter" in target_norm and "started" in c_norm)
+                        )
+                        if target_norm != c_norm and target_norm not in c_norm and c_norm not in target_norm and not is_typo:
                             continue
                     if query and query not in ("card", "cards", "task", "tasks", "list", "lists", "all"):
-                        if query not in card_obj["name"].lower() and query not in card_obj["desc"].lower():
+                        q_clean = query.lower()
+                        in_name = q_clean in card_obj["name"].lower()
+                        in_desc = q_clean in card_obj["desc"].lower()
+                        in_list = q_clean in card_obj["list_name"].lower() or card_obj["list_name"].lower() in q_clean
+                        if not (in_name or in_desc or in_list):
                             continue
                     cards.append(card_obj)
 
@@ -580,7 +689,7 @@ class MockTrelloSearchExecutor(BaseExecutor):
                     tool_id=tool.get("tool_id", "trello_search_cards"),
                     status="SUCCESS",
                     is_mutation=False,
-                    result={"cards": cards, "total": len(cards)},
+                    result={"cards": cards, "total": len(cards), "list_name": raw_list_filter if target_norm else None},
                     message=msg,
                 )
             except Exception as exc:
@@ -710,12 +819,13 @@ class MockTrelloCardDetailsExecutor(BaseExecutor):
     ) -> ExecutionResult:
         card_name = parameters.get("card_name", "Task Card")
         card_id = parameters.get("card_id")
+        board_id = parameters.get("board_id") or settings.TRELLO_BOARD_ID or None
 
         if settings.TRELLO_API_KEY and settings.TRELLO_TOKEN:
             try:
                 from app.mcp_server import trello_tools
                 if not card_id or card_id == "c101":
-                    cards_res = await trello_tools.trello_list_cards()
+                    cards_res = await trello_tools.trello_list_cards(board_id=board_id)
                     matched_c = find_best_matching_card(cards_res.get("cards", []), card_name)
                     if matched_c:
                         card_id = matched_c["id"]

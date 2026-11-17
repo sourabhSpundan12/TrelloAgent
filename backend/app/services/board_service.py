@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import logging
+import re
 from typing import Any, Dict, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -74,23 +75,95 @@ async def ensure_default_board(db: AsyncIOMotorDatabase) -> Dict[str, Any]:
     return {}
 
 
+async def resolve_active_board(
+    db: AsyncIOMotorDatabase,
+    requested_board_id: Optional[str] = None,
+    command: Optional[str] = None,
+    parameters: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Resolves target board ID and name dynamically:
+    1. If user explicitly specified a board in command or parameters (e.g. "My Trello Board", "mytrello", "Agentic Task Manager"), match against registered boards in database.
+    2. Otherwise, use requested_board_id from client if provided.
+    3. Otherwise, use active board (is_active: True) from database.
+    4. Otherwise, fallback to default configured board.
+    Returns dict: {"board_id": str, "name": str}
+    """
+    boards_coll = db["boards"]
+    all_boards = []
+    try:
+        cursor = boards_coll.find({})
+        async for doc in cursor:
+            b_id = str(doc.get("board_id") or doc.get("id") or "").strip()
+            if b_id:
+                all_boards.append({
+                    "board_id": b_id,
+                    "name": str(doc.get("name") or "").strip(),
+                    "is_active": bool(doc.get("is_active", False)),
+                })
+    except Exception as exc:
+        logger.warning(f"Error reading boards for resolution: {exc}")
+
+    def norm_str(s: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", s.lower())
+
+    # 1. Check if parameters specified board_name or board_id
+    if parameters:
+        p_bname = parameters.get("board_name") or parameters.get("board")
+        p_bid = parameters.get("board_id")
+        if p_bid:
+            for b in all_boards:
+                if b["board_id"] == str(p_bid).strip():
+                    return {"board_id": b["board_id"], "name": b["name"] or "Trello Board"}
+            return {"board_id": str(p_bid).strip(), "name": "Trello Board"}
+        if p_bname:
+            norm_pb = norm_str(str(p_bname))
+            for b in all_boards:
+                b_norm = norm_str(b["name"])
+                if norm_pb and (norm_pb == b_norm or norm_pb in b_norm or b_norm in norm_pb):
+                    return {"board_id": b["board_id"], "name": b["name"]}
+
+    # 2. Check if command explicitly mentions any known board name
+    if command:
+        cmd_norm = norm_str(command)
+        sorted_boards = sorted(all_boards, key=lambda b: len(b["name"]), reverse=True)
+        for b in sorted_boards:
+            b_name = b["name"]
+            if not b_name:
+                continue
+            b_norm = norm_str(b_name)
+            if len(b_norm) >= 3 and b_norm in cmd_norm:
+                logger.info(f"Resolved board '{b_name}' ({b['board_id']}) from user command: '{command}'")
+                return {"board_id": b["board_id"], "name": b_name}
+
+    # 3. Use client-provided requested_board_id
+    if requested_board_id and str(requested_board_id).strip():
+        req_id = str(requested_board_id).strip()
+        for b in all_boards:
+            if b["board_id"] == req_id:
+                return {"board_id": req_id, "name": b["name"] or "Active Board"}
+        return {"board_id": req_id, "name": "Active Board"}
+
+    # 4. Use is_active: True board from database
+    for b in all_boards:
+        if b["is_active"]:
+            return {"board_id": b["board_id"], "name": b["name"] or "Active Board"}
+
+    # 5. Default fallback
+    default_id = (settings.TRELLO_BOARD_ID or "").strip()
+    for b in all_boards:
+        if b["board_id"] == default_id:
+            return {"board_id": default_id, "name": b["name"] or "Primary Trello Board"}
+
+    return {"board_id": default_id, "name": "Primary Trello Board"}
+
+
 async def get_active_board_id(
-    db: AsyncIOMotorDatabase, requested_board_id: Optional[str] = None
+    db: AsyncIOMotorDatabase,
+    requested_board_id: Optional[str] = None,
+    command: Optional[str] = None,
+    parameters: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Resolves the currently active Trello board ID."""
-    if requested_board_id and str(requested_board_id).strip():
-        return str(requested_board_id).strip()
-
-    try:
-        active_doc = await db["boards"].find_one({"is_active": True})
-        if active_doc and active_doc.get("board_id"):
-            return str(active_doc["board_id"]).strip()
-
-        # If none marked active, try ensure default
-        seeded = await ensure_default_board(db)
-        if seeded and seeded.get("board_id"):
-            return str(seeded["board_id"]).strip()
-    except Exception as exc:
-        logger.warning(f"Error querying active board from database: {exc}")
-
-    return settings.TRELLO_BOARD_ID or ""
+    res = await resolve_active_board(db, requested_board_id, command, parameters)
+    return res["board_id"]

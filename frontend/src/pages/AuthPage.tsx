@@ -10,7 +10,6 @@ import {
   Eye,
   EyeOff,
   ShieldCheck,
-  Zap,
   ArrowRight,
   ArrowLeft,
   Loader2,
@@ -845,25 +844,6 @@ export const AuthPage: React.FC = () => {
               </div>
             </form>
           )}
-        </div>
-
-        {/* Product Trust Features Footer */}
-        <div className="grid grid-cols-3 gap-2 pt-2 text-center text-[10px] text-slate-500 dark:text-slate-400">
-          <div className="flex flex-col items-center p-2 rounded-xl bg-white/60 dark:bg-slate-900/40 border border-slate-200/60 dark:border-slate-800/60">
-            <ShieldCheck className="w-3.5 h-3.5 text-brand-500 mb-1" />
-            <span className="font-semibold">Argon2 & JWT</span>
-            <span>Enterprise Security</span>
-          </div>
-          <div className="flex flex-col items-center p-2 rounded-xl bg-white/60 dark:bg-slate-900/40 border border-slate-200/60 dark:border-slate-800/60">
-            <Zap className="w-3.5 h-3.5 text-brand-500 mb-1" />
-            <span className="font-semibold">Trello MCP</span>
-            <span>Live Workspace Sync</span>
-          </div>
-          <div className="flex flex-col items-center p-2 rounded-xl bg-white/60 dark:bg-slate-900/40 border border-slate-200/60 dark:border-slate-800/60">
-            <Cpu className="w-3.5 h-3.5 text-brand-500 mb-1" />
-            <span className="font-semibold">AI Assistant</span>
-            <span>Safe Mutation Gate</span>
-          </div>
         </div>
       </div>
     </div>

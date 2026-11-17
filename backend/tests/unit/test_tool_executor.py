@@ -118,3 +118,94 @@ async def test_tool_executor_policies(mock_db):
             context=ExecutionContext(user_id="u1", user_role="ADMIN"),
         )
 
+
+@pytest.mark.asyncio
+async def test_trello_search_executor_list_name_matching():
+    from unittest.mock import AsyncMock, patch
+    from app.tool_executor.registry import MockTrelloSearchExecutor
+
+    executor = MockTrelloSearchExecutor()
+    mock_lists = {
+        "status": "SUCCESS",
+        "lists": [
+            {"id": "list_guide_1", "name": "Trello Starter Guide"},
+            {"id": "list_today_2", "name": "Today"},
+        ]
+    }
+    mock_cards = {
+        "status": "SUCCESS",
+        "cards": [
+            {"id": "c1", "name": "Manage your team's projects", "desc": "", "idList": "list_guide_1", "url": "https://trello.com/c/1"},
+            {"id": "c2", "name": "backend", "desc": "Backend dev", "idList": "list_guide_1", "url": "https://trello.com/c/2"},
+            {"id": "c3", "name": "frontend", "desc": "UI components", "idList": "list_guide_1", "url": "https://trello.com/c/3"},
+            {"id": "c4", "name": "MCP", "desc": "MCP server", "idList": "list_today_2", "url": "https://trello.com/c/4"},
+        ]
+    }
+
+    with patch("app.mcp_server.trello_tools.trello_list_lists", new=AsyncMock(return_value=mock_lists)), \
+         patch("app.mcp_server.trello_tools.trello_list_cards", new=AsyncMock(return_value=mock_cards)), \
+         patch("app.core.config.settings.TRELLO_API_KEY", "mock_key"), \
+         patch("app.core.config.settings.TRELLO_TOKEN", "mock_token"):
+
+        # 1. User passes query="Trello Starter Guide"
+        res = await executor.execute(
+            tool={"tool_id": "trello_search_cards"},
+            parameters={"query": "Trello Starter Guide"},
+            context=ExecutionContext(user_id="u1", user_role="EMPLOYEE", confirmed=True),
+        )
+        assert res.status == "SUCCESS"
+        assert res.result["total"] == 3
+        card_names = [c["name"] for c in res.result["cards"]]
+        assert "Manage your team's projects" in card_names
+        assert "backend" in card_names
+        assert "frontend" in card_names
+        assert "MCP" not in card_names
+
+        # 2. User typo "trello started guide"
+        res2 = await executor.execute(
+            tool={"tool_id": "trello_search_cards"},
+            parameters={"query": "trello started guide"},
+            context=ExecutionContext(user_id="u1", user_role="EMPLOYEE", confirmed=True),
+        )
+        assert res2.result["total"] == 3
+
+
+@pytest.mark.asyncio
+async def test_trello_delete_executor_list_deletion():
+    from unittest.mock import AsyncMock, patch
+    from app.tool_executor.registry import MockTrelloArchiveCardExecutor
+
+    executor = MockTrelloArchiveCardExecutor()
+    mock_lists = {
+        "status": "SUCCESS",
+        "lists": [
+            {"id": "list_guide_1", "name": "Trello Starter Guide"},
+            {"id": "list_today_2", "name": "Today"},
+        ]
+    }
+    mock_cards = {
+        "status": "SUCCESS",
+        "cards": [
+            {"id": "c1", "name": "Manage your team's projects", "desc": "", "idList": "list_guide_1"},
+            {"id": "c2", "name": "backend", "desc": "Backend dev", "idList": "list_guide_1"},
+            {"id": "c3", "name": "frontend", "desc": "UI components", "idList": "list_guide_1"},
+        ]
+    }
+    mock_delete = AsyncMock(return_value={"status": "SUCCESS"})
+
+    with patch("app.mcp_server.trello_tools.trello_list_lists", new=AsyncMock(return_value=mock_lists)), \
+         patch("app.mcp_server.trello_tools.trello_list_cards", new=AsyncMock(return_value=mock_cards)), \
+         patch("app.mcp_server.trello_tools.trello_delete_card", new=mock_delete), \
+         patch("app.core.config.settings.TRELLO_API_KEY", "mock_key"), \
+         patch("app.core.config.settings.TRELLO_TOKEN", "mock_token"):
+
+        res = await executor.execute(
+            tool={"tool_id": "trello_delete_card"},
+            parameters={"card_name": "Trello Starter Guide tasks"},
+            context=ExecutionContext(user_id="u1", user_role="EMPLOYEE", confirmed=True),
+        )
+        assert res.status == "SUCCESS"
+        assert res.result["total_deleted"] == 3
+        assert len(res.result["deleted_cards"]) == 3
+        assert mock_delete.call_count == 3
+

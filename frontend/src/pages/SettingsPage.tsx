@@ -375,13 +375,6 @@ export const SettingsPage: React.FC = () => {
                     </Button>
                   </div>
                 </form>
-
-                <div className="p-3.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 space-y-1">
-                  <p className="font-semibold text-slate-700 dark:text-slate-300">Session Security Notice</p>
-                  <p>
-                    Changing your password will revoke all active refresh tokens. You will stay signed in on this current browser, but any sessions on other devices will need to sign in again.
-                  </p>
-                </div>
               </CardContent>
             </Card>
           )}

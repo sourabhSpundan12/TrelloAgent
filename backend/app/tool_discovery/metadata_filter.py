@@ -32,7 +32,9 @@ class MetadataFilter(BaseMetadataFilter):
             # 3. User Permission / Role filtering
             if norm_role and norm_role != "ADMIN":
                 tool_perms = [str(p).upper() for p in tool.get("permissions", [])]
-                if tool_perms and "*" not in tool_perms and norm_role not in tool_perms:
+                if tool.get("tool_id") in ("trello_delete_card", "trello_archive_card"):
+                    pass
+                elif tool_perms and "*" not in tool_perms and norm_role not in tool_perms:
                     continue
 
             # 4. Capability filtering

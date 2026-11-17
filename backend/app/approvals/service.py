@@ -153,7 +153,16 @@ class ApprovalService:
 
         # Resolve board
         target_board_id = board_id or parameters.get("board_id") or settings.TRELLO_BOARD_ID or None
-        target_board_name = board_name or "Configured Trello Board"
+        target_board_name = board_name
+        if not target_board_name and target_board_id:
+            try:
+                b_doc = await self.db["boards"].find_one({"$or": [{"board_id": target_board_id}, {"id": target_board_id}]})
+                if b_doc and b_doc.get("name"):
+                    target_board_name = b_doc["name"]
+            except Exception:
+                pass
+        if not target_board_name:
+            target_board_name = "Configured Trello Board"
 
         # Resolve list
         list_name = (
@@ -193,7 +202,11 @@ class ApprovalService:
             else:
                 description = f"Update card '{title}' on the board."
         elif action_type in ("ARCHIVE_CARD", "DELETE_CARD"):
-            description = f"Permanently archive / delete card '{title}' from Trello board."
+            raw_target = title.strip()
+            if parameters.get("list_name") or any(k in raw_target.lower() for k in ("guide", "list", "column", "starter", "started", "tasks")):
+                description = f"Permanently archive / delete task cards in '{raw_target}' list from Trello board."
+            else:
+                description = f"Permanently archive / delete card '{title}' from Trello board."
         else:
             raw_desc = parameters.get("desc") or parameters.get("description")
             description = self._generate_related_description(title, command, raw_desc)
@@ -377,7 +390,10 @@ class ApprovalService:
             action_id=action_id,
         )
 
-        draft_params = locked.get("draft", {}).get("parameters", {})
+        draft_params = dict(locked.get("draft", {}).get("parameters", {}))
+        board_id_val = locked.get("draft", {}).get("board_id") or locked.get("board_id")
+        if board_id_val and "board_id" not in draft_params:
+            draft_params["board_id"] = board_id_val
         tool_id = locked.get("tool_id")
 
         try:
@@ -404,7 +420,11 @@ class ApprovalService:
         elif isinstance(exec_result, dict):
             dumped_result = exec_result
         elif action_type in ("ARCHIVE_CARD", "DELETE_CARD"):
-            description = f"Permanently archive / delete card '{title}' from Trello board."
+            raw_target = title.strip()
+            if parameters.get("list_name") or any(k in raw_target.lower() for k in ("guide", "list", "column", "starter", "started", "tasks")):
+                description = f"Permanently archive / delete task cards in '{raw_target}' list from Trello board."
+            else:
+                description = f"Permanently archive / delete card '{title}' from Trello board."
         else:
             dumped_result = {"status": "SUCCESS", "raw": str(exec_result)}
 

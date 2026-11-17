@@ -46,7 +46,11 @@ export const BoardProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const list = res.boards || [];
       setBoards(list);
 
-      const active = list.find((b) => b.is_active) || null;
+      const storedId = localStorage.getItem(ACTIVE_BOARD_KEY);
+      const active =
+        list.find((b) => b.is_active) ||
+        (storedId ? list.find((b) => b.board_id === storedId) : null) ||
+        (list.length > 0 ? list[0] : null);
       setActiveBoard(active);
       if (active) {
         setActiveBoardId(active.board_id);

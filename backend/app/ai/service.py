@@ -291,12 +291,22 @@ class AIService:
                     confidence=0.95,
                 )
 
-        # Check for listing cards: "show cards in the to do list", "list cards"
+        # Check for listing cards: "show cards in the to do list", "show Trello Starter Guide tasks", "list cards"
         if ("card" in cmd_lower or "cards" in cmd_lower or "task" in cmd_lower or "tasks" in cmd_lower) and any(w in cmd_lower for w in ["show", "list", "view"]) and not any(w in cmd_lower for w in ["create", "add", "new", "move", "details", "inspect"]):
             tool_id = match_tool_id("trello_search_cards") or match_tool_id("trello_list_cards")
             if tool_id:
                 list_match = re.search(r"(?:in|to|under)\s+(?:the\s+)?([a-zA-Z0-9_\s\-]+?)(?:\s+list|\s+column)?$", command, re.IGNORECASE)
                 list_name = list_match.group(1).strip() if list_match else None
+                if not list_name:
+                    list_match2 = re.search(
+                        r"(?:show|list|view|get)\s+(?:the\s+)?([a-zA-Z0-9_\s\-]+?)\s+(?:tasks?|cards?)\b",
+                        command,
+                        re.IGNORECASE,
+                    )
+                    if list_match2:
+                        cand = list_match2.group(1).strip()
+                        if cand.lower() not in ("all", "my", "live", "trello", "all the", "me"):
+                            list_name = cand
                 return GeminiIntentOutput(
                     intent="search_cards" if "search" in tool_id else "list_cards",
                     entity="card",
@@ -646,25 +656,25 @@ class AIService:
                 confidence=0.94,
             )
 
-        # Check for card deletion / archiving: "delete card <name>", "archive card <name>", "remove card <name>"
+        # Check for card deletion / archiving: "delete card <name>", "delete Trello Starter Guide tasks", "archive card <name>", "remove card <name>"
         delete_match1 = re.search(
-            r"(?:delete|archive|remove|discard|trash)\s+(?:the\s+)?(?:card|task)\s*(?:named|\s*:\s*|\s+called|\s+titled)?\s*(.+)",
+            r"(?:delete|archive|remove|discard|trash)\s+(?:all\s+)?(?:the\s+)?(?:cards?|tasks?)?(?:\s+(?:in|from|under))?\s*(?:named|\s*:\s*|\s+called|\s+titled)?\s*(.+?)(?:\s+(?:cards?|tasks?))?[\.\!]?$",
             command,
             re.IGNORECASE,
         )
         delete_match2 = re.search(
-            r"(.+?)\s+(?:card\s+)?(?:delete|archive|remove|discard|trash)[\.\!]?$",
+            r"(.+?)\s+(?:cards?|tasks?\s+)?(?:delete|archive|remove|discard|trash)[\.\!]?$",
             command,
             re.IGNORECASE,
         )
         active_del = delete_match1 or delete_match2
         if active_del and any(w in cmd_lower for w in ["delete", "archive", "remove", "discard", "trash"]):
-            raw_card_name = active_del.group(1).replace("card", "").strip().strip('"\'').rstrip(".")
+            raw_card_name = active_del.group(1).replace("card", "").replace("task", "").strip().strip('"\'').rstrip(".")
             tool_id = match_tool_id("trello_delete_card") or match_tool_id("trello_archive_card") or (discovered_tools[0].tool.tool_id if discovered_tools else None)
             return GeminiIntentOutput(
                 intent="delete_card",
                 entity="card",
-                parameters={"card_name": raw_card_name, "name": raw_card_name},
+                parameters={"card_name": raw_card_name, "name": raw_card_name, "list_name": raw_card_name},
                 suggested_tool_id=tool_id,
                 requires_clarification=False,
                 confidence=0.96,

@@ -175,9 +175,17 @@ class PIITerminalLogger:
             return True
 
         pii_leaked = False
+        common_exemptions = {
+            "card", "task", "list", "board", "trello", "todo", "done", "doing",
+            "review", "testing", "in-review", "login", "logout", "signin", "signup",
+            "api", "backend", "frontend", "auth", "thursday", "today", "tomorrow",
+            "monday", "tuesday", "wednesday", "friday", "saturday", "sunday", "starter", "guide"
+        }
         for placeholder, original_val in mapping.items():
             if original_val and len(original_val.strip()) > 1:
                 val_clean = original_val.strip()
+                if val_clean.lower() in common_exemptions:
+                    continue
                 if re.search(r"\b" + re.escape(val_clean) + r"\b", serialized_prompt, re.IGNORECASE):
                     pii_leaked = True
                     break
