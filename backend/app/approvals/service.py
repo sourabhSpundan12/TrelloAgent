@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import re
 from typing import Any, Dict, Optional
 import uuid
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -34,15 +35,75 @@ class ApprovalService:
         self.tool_executor = ToolExecutorService(db)
 
     @staticmethod
-    def _generate_related_description(title: str, command: str) -> str:
+    def _generate_related_description(title: str, command: str, raw_desc: Optional[str] = None) -> str:
         clean_title = title.strip()
-        if clean_title.lower() in ("task", "card", "new task", "new card") and len(command.strip()) > len(clean_title):
-            clean_title = command.strip()
+        t_lower = clean_title.lower()
 
-        return (
-            f"Implement and complete deliverables for '{clean_title}'. "
-            f"Scope includes requirement analysis, architectural setup, functionality testing, and deployment verification."
-        )
+        # If user explicitly supplied custom description text in quotes or after 'description:' or 'notes:'
+        # and it's NOT an echo of the "create card ... by ... add member" prompt:
+        if raw_desc and str(raw_desc).strip():
+            d_clean = str(raw_desc).strip()
+            d_lower = d_clean.lower()
+            is_echo = (
+                re.match(r"^(?:create|add|new)\s+(?:a\s+)?(?:task\s+card|card|task)\b", d_lower)
+                or ("with due date" in d_lower and ("assigned to" in d_lower or "add member" in d_lower))
+                or d_lower.startswith("create ")
+                or ("due date" in d_lower and "assigned to" in d_lower)
+                or "task created via agentic assistant" in d_lower
+                or (command and d_clean.lower() == command.lower())
+            )
+            if not is_echo:
+                return d_clean
+
+        # Intelligent domain-aware descriptions directly aligned with the title
+        if any(k in t_lower for k in ("backend", "server", "api", "endpoint", "microservice")):
+            return (
+                f"Design, develop, and test backend architecture, API endpoints, database interactions, and business logic for '{clean_title}'. "
+                "Ensure robust error handling, schema validation, performance optimization, and comprehensive unit test coverage."
+            )
+        elif any(k in t_lower for k in ("frontend", "ui", "ux", "web", "react", "view", "interface", "page")):
+            return (
+                f"Build and refine responsive user interface components and client-side interactions for '{clean_title}'. "
+                "Ensure accessibility standards, seamless backend API integration, state management, and cross-browser reliability."
+            )
+        elif any(k in t_lower for k in ("auth", "login", "register", "signup", "password", "jwt", "oauth")):
+            return (
+                f"Implement secure authentication workflows, credential hashing, token lifecycle, and session verification for '{clean_title}'. "
+                "Enforce role-based access control, route protection, and security audit compliance."
+            )
+        elif any(k in t_lower for k in ("database", "db", "mongo", "postgres", "sql", "migration", "schema")):
+            return (
+                f"Design and optimize data models, collections, indexes, and persistence layers for '{clean_title}'. "
+                "Ensure transactional integrity, migration reliability, query efficiency, and backup readiness."
+            )
+        elif any(k in t_lower for k in ("test", "testing", "qa", "e2e", "integration test")):
+            return (
+                f"Develop and execute automated test suites, end-to-end verification, and edge-case assertions for '{clean_title}'. "
+                "Identify potential defects, verify regression safety, and validate system stability under expected workloads."
+            )
+        elif any(k in t_lower for k in ("deploy", "devops", "docker", "k8s", "kubernetes", "ci", "cd", "pipeline", "infrastructure")):
+            return (
+                f"Configure deployment infrastructure, build pipelines, environment variables, and health monitoring for '{clean_title}'. "
+                "Ensure zero-downtime rollouts, security hardening, and operational observability."
+            )
+        elif any(k in t_lower for k in ("checkin", "status", "standup", "sync", "review")):
+            return (
+                f"Conduct milestone progress review and status synchronization for '{clean_title}'. "
+                "Track sprint deliverables against timeline, align dependencies, and document action items."
+            )
+        elif any(k in t_lower for k in ("bug", "fix", "issue", "error", "hotfix")):
+            return (
+                f"Investigate root cause of reported issue in '{clean_title}', develop and test code fix, and verify regression safety before deploying to production."
+            )
+        elif any(k in t_lower for k in ("doc", "docs", "documentation", "guide", "readme")):
+            return (
+                f"Author and update technical documentation, system specifications, architectural diagrams, and user guidelines for '{clean_title}'."
+            )
+        else:
+            return (
+                f"Plan, implement, and verify deliverables for '{clean_title}'. "
+                "Review project requirements, execute core development milestones, and validate against quality and acceptance standards."
+            )
 
     async def create_task_draft(
         self,
@@ -92,7 +153,16 @@ class ApprovalService:
 
         # Resolve board
         target_board_id = board_id or parameters.get("board_id") or settings.TRELLO_BOARD_ID or None
-        target_board_name = board_name or "Configured Trello Board"
+        target_board_name = board_name
+        if not target_board_name and target_board_id:
+            try:
+                b_doc = await self.db["boards"].find_one({"$or": [{"board_id": target_board_id}, {"id": target_board_id}]})
+                if b_doc and b_doc.get("name"):
+                    target_board_name = b_doc["name"]
+            except Exception:
+                pass
+        if not target_board_name:
+            target_board_name = "Configured Trello Board"
 
         # Resolve list
         list_name = (
@@ -132,13 +202,14 @@ class ApprovalService:
             else:
                 description = f"Update card '{title}' on the board."
         elif action_type in ("ARCHIVE_CARD", "DELETE_CARD"):
-            description = f"Permanently archive / delete card '{title}' from Trello board."
+            raw_target = title.strip()
+            if parameters.get("list_name") or any(k in raw_target.lower() for k in ("guide", "list", "column", "starter", "started", "tasks")):
+                description = f"Permanently archive / delete task cards in '{raw_target}' list from Trello board."
+            else:
+                description = f"Permanently archive / delete card '{title}' from Trello board."
         else:
             raw_desc = parameters.get("desc") or parameters.get("description")
-            if not raw_desc or "task created via agentic assistant" in str(raw_desc).lower() or str(raw_desc).strip() == "":
-                description = self._generate_related_description(title, command)
-            else:
-                description = str(raw_desc).strip()
+            description = self._generate_related_description(title, command, raw_desc)
 
         # Resolve priority & due date
         priority = (parameters.get("priority") or "MEDIUM").upper()
@@ -319,7 +390,10 @@ class ApprovalService:
             action_id=action_id,
         )
 
-        draft_params = locked.get("draft", {}).get("parameters", {})
+        draft_params = dict(locked.get("draft", {}).get("parameters", {}))
+        board_id_val = locked.get("draft", {}).get("board_id") or locked.get("board_id")
+        if board_id_val and "board_id" not in draft_params:
+            draft_params["board_id"] = board_id_val
         tool_id = locked.get("tool_id")
 
         try:
@@ -346,7 +420,11 @@ class ApprovalService:
         elif isinstance(exec_result, dict):
             dumped_result = exec_result
         elif action_type in ("ARCHIVE_CARD", "DELETE_CARD"):
-            description = f"Permanently archive / delete card '{title}' from Trello board."
+            raw_target = title.strip()
+            if parameters.get("list_name") or any(k in raw_target.lower() for k in ("guide", "list", "column", "starter", "started", "tasks")):
+                description = f"Permanently archive / delete task cards in '{raw_target}' list from Trello board."
+            else:
+                description = f"Permanently archive / delete card '{title}' from Trello board."
         else:
             dumped_result = {"status": "SUCCESS", "raw": str(exec_result)}
 

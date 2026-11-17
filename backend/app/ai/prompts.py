@@ -72,8 +72,8 @@ INSTRUCTIONS:
 3. Select the most relevant tool_id from AVAILABLE DYNAMIC TOOLS. If none match, set suggested_tool_id to null.
 4. Extract parameters conforming to the selected tool's input_schema properties:
    - For listing or searching cards (e.g., 'trello_search_cards'):
-     * 'list_name': If the user asks to view/show cards in a specific list (e.g. "show cards in the To Do list", "list cards in In-Review"), set 'list_name' to the requested list name (e.g. "To Do", "In-Review", "Doing", "Done"). DO NOT put the list name in 'query'.
-     * 'query': Specific keyword search query (e.g. "OAuth", "database"). Leave empty or omit if the user is asking to show all cards in a list.
+     * 'list_name': If the user asks to view/show cards from a specific list or column (e.g. "show cards in the To Do list", "list cards in In-Review", "show Trello Starter Guide tasks", "show Trello Started Guide tasks", "show Today cards"), set 'list_name' to the requested list name (e.g. "To Do", "In-Review", "Doing", "Done", "Trello Starter Guide", "Today"). DO NOT put the list name in 'query'.
+     * 'query': Specific keyword search query (e.g. "OAuth", "database"). Leave empty or omit if the user is asking to show cards from a list.
    - For list creation (e.g., 'trello_create_list'):
      * 'name': The name of the new column or list to create (e.g. "In-Review", "Backlog", "Testing").
    - For task creation (e.g., 'trello_create_card'):
@@ -81,7 +81,7 @@ INSTRUCTIONS:
        - If the user says "Create a task for <Person>. ... Ask him/her to <Action> by <Date>" (e.g. "Ask him to Checkin by 20 November"), the task title 'name' is the action requested: "Checkin" (or "Check In"), NOT the person's name, and NEVER prior topics from history!
        - If the user says "create a task card <Title>...", the title is <Title> (e.g. "Full Stack", "Backend", "JWT Authentication").
      * 'member_name': Name of team member or employee to assign or add to the card if mentioned in the command (e.g. "Yogesh", "Alex Rivera", "Jordan Lee").
-     * 'desc': YOU MUST ALWAYS generate an informative, professional description directly related to the current task heading/action. Detail key objectives, deliverables, and implementation scope for this specific task (e.g., for "Checkin", describe completing checkin verification, milestone reporting, and compliance requirements). If the user provides additional information or description in their message, include it in 'desc'. NEVER leave 'desc' empty and NEVER pull descriptions from previous messages.
+     * 'desc': YOU MUST generate an informative, domain-relevant, and context-rich description directly related to the task heading/action (e.g. for "Backend", describe designing backend architecture, API endpoints, database interactions, schema validation, and unit test coverage; for "Frontend", describe building responsive UI components, state management, and accessibility; for "Auth", describe authentication workflows, token lifecycle, and route protection). CRITICAL: NEVER repeat or echo the user command prompt (DO NOT write things like "Create backend card with due date Thursday and assigned to..."). Formulate professional engineering and operational deliverables implied by the task title. If the user explicitly provided custom notes or specifications, incorporate them. NEVER leave 'desc' empty and NEVER pull descriptions from previous messages.
      * 'list_name': Target column name (e.g. "To Do", "Doing", "In-Review", "Testing", defaults to "To Do" if unspecified).
      * 'priority': Task priority ("LOW", "MEDIUM", "HIGH", "URGENT").
      * 'due_date': Due date if mentioned in the command (e.g. "21 November 2026", "tomorrow", "next Friday", "2026-11-20").
@@ -93,11 +93,13 @@ INSTRUCTIONS:
    - For updating or assigning members to tasks (e.g., 'trello_update_card'):
      * 'card_name': The title or name of the existing card to find and update (e.g. "Register Page", "Register", "Login API", "Backend").
      * 'member_name': Name or username of the team member or employee to assign or add to the card (e.g. "Alex Rivera"). NOTE: When the user says "on <card> add member <person>" or "assign <person> to <card>" or "add <person> to <card>", this is ALWAYS an 'update_card' intent using 'trello_update_card', NOT 'create_card'!
-     * 'new_title': Updated title if requested.
+     * 'new_title': Updated title if requested (e.g. updated title).
      * 'new_description': Updated description if requested.
      * 'new_due_date': Updated due date if requested.
+     * 'board_name': The target board name if explicitly mentioned in the request (e.g. "My Trello Board", "mytrello board", "Agentic Task Manager").
    - For deleting or archiving tasks (e.g., 'trello_delete_card', 'trello_archive_card'):
-     * 'card_name': The title or name of the card to delete or archive (e.g. "Person 1", "Login API", "Backend").
+     * 'card_name': The title or name of the card to delete or archive (e.g. "Person 1", "Login API", "Backend"), OR the list name if the user asks to delete all tasks in a column/list (e.g. "Trello Starter Guide", "Today").
+     * 'list_name': The column or list name if deleting tasks from a specific list (e.g. "Trello Starter Guide").
 5. If the command is unclear or missing mandatory inputs, set requires_clarification to true.
 
 Respond strictly with a JSON object conforming to the schema.
@@ -122,8 +124,8 @@ INSTRUCTIONS:
 3. Select the most relevant tool_id from AVAILABLE DYNAMIC TOOLS. If none match, set suggested_tool_id to null.
 4. Extract parameters conforming to the selected tool's input_schema properties:
    - For listing or searching cards (e.g., 'trello_search_cards'):
-     * 'list_name': If the user asks to view/show cards in a specific list (e.g. "show cards in the To Do list", "list cards in In-Review"), set 'list_name' to the requested list name (e.g. "To Do", "In-Review", "Doing", "Done"). DO NOT put the list name in 'query'.
-     * 'query': Specific keyword search query (e.g. "OAuth", "database"). Leave empty or omit if the user is asking to show all cards in a list.
+     * 'list_name': If the user asks to view/show cards from a specific list or column (e.g. "show cards in the To Do list", "list cards in In-Review", "show Trello Starter Guide tasks", "show Trello Started Guide tasks", "show Today cards"), set 'list_name' to the requested list name (e.g. "To Do", "In-Review", "Doing", "Done", "Trello Starter Guide", "Today"). DO NOT put the list name in 'query'.
+     * 'query': Specific keyword search query (e.g. "OAuth", "database"). Leave empty or omit if the user is asking to show cards from a list.
    - For list creation (e.g., 'trello_create_list'):
      * 'name': The name of the new column or list to create (e.g. "In-Review", "Backlog", "Testing").
    - For task creation (e.g., 'trello_create_card'):
@@ -141,11 +143,13 @@ INSTRUCTIONS:
    - For updating or assigning members to tasks (e.g., 'trello_update_card'):
      * 'card_name': The title or name of the existing card to find and update (e.g. "Register Page", "Register", "Login API", "Backend").
      * 'member_name': Name or username of the team member or employee to assign or add to the card (e.g. "Alex Rivera"). NOTE: When the user says "on <card> add member <person>" or "assign <person> to <card>" or "add <person> to <card>", this is ALWAYS an 'update_card' intent using 'trello_update_card', NOT 'create_card'!
-     * 'new_title': Updated title if requested.
+     * 'new_title': Updated title if requested (e.g. updated title).
      * 'new_description': Updated description if requested.
      * 'new_due_date': Updated due date if requested.
+     * 'board_name': The target board name if explicitly mentioned in the request (e.g. "My Trello Board", "mytrello board", "Agentic Task Manager").
    - For deleting or archiving tasks (e.g., 'trello_delete_card', 'trello_archive_card'):
-     * 'card_name': The title or name of the card to delete or archive (e.g. "Person 1", "Login API", "Backend").
+     * 'card_name': The title or name of the card to delete or archive (e.g. "Person 1", "Login API", "Backend"), OR the list name if the user asks to delete all tasks in a column/list (e.g. "Trello Starter Guide", "Today").
+     * 'list_name': The column or list name if deleting tasks from a specific list (e.g. "Trello Starter Guide").
 5. If the command is unclear or missing mandatory inputs, set requires_clarification to true.
 """),
     ])

@@ -139,7 +139,7 @@ DEFAULT_ENTERPRISE_TOOLS: List[Dict[str, Any]] = [
                 "card_id": {"type": "string", "description": "Card ID to delete."},
             },
         },
-        "permissions": ["MANAGER", "ADMIN"],
+        "permissions": ["EMPLOYEE", "MANAGER", "ADMIN"],
         "executor_type": "trello",
         "executor_key": "trello_delete_card",
         "version": "1.0.0",

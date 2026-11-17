@@ -20,7 +20,7 @@ from app.database.mongodb import get_database
 from app.integrations.gemini.schemas import AIInterpretRequest, AIInterpretResponse
 from app.integrations.gemini.service import GeminiService
 from app.schemas.user import UserResponse
-from app.services.board_service import get_active_board_id
+from app.services.board_service import get_active_board_id, resolve_active_board
 from app.tool_discovery.service import ToolDiscoveryService
 from app.tool_executor.interfaces import ExecutionContext
 from app.tool_executor.service import ToolExecutorService
@@ -151,10 +151,16 @@ async def interpret_user_command(
     services=Depends(get_ai_services),
 ) -> AIInterpretResponse:
     discovery_service, gemini_service, approval_service, tool_executor, chat_repo = services
-    active_board_id = await get_active_board_id(approval_service.db, payload.board_id)
-    user_role_str = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
     cmd = payload.command.strip()
     cmd_lower = cmd.lower()
+    board_info = await resolve_active_board(
+        approval_service.db,
+        requested_board_id=payload.board_id,
+        command=cmd,
+    )
+    active_board_id = board_info["board_id"]
+    active_board_name = board_info["name"]
+    user_role_str = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
     now_dt = datetime.now(timezone.utc)
     now_str = now_dt.isoformat()
     conv_id = payload.conversation_id or f"SES-{uuid.uuid4().hex[:10]}"
@@ -210,7 +216,17 @@ async def interpret_user_command(
             )
             card_title = active_action.get("draft", {}).get("title") or "Task"
             card_url = confirm_res.card_url
-            asst_content = f"Action confirmed! Trello card '{card_title}' has been successfully created."
+            act_type = active_action.get("draft", {}).get("action_type") or active_action.get("action_type") or ""
+            if act_type in ("ARCHIVE_CARD", "DELETE_CARD"):
+                asst_content = f"Action confirmed! Task card(s) for '{card_title}' have been successfully deleted from Trello."
+            elif act_type == "MOVE_CARD":
+                asst_content = f"Action confirmed! Trello card '{card_title}' has been successfully moved."
+            elif act_type == "UPDATE_CARD":
+                asst_content = f"Action confirmed! Trello card '{card_title}' has been successfully updated."
+            elif act_type == "CREATE_LIST":
+                asst_content = f"Action confirmed! Trello list '{card_title}' has been successfully created."
+            else:
+                asst_content = f"Action confirmed! Trello card '{card_title}' has been successfully created."
             if card_url:
                 asst_content += f"\nView your card here: {card_url}"
 
@@ -445,6 +461,36 @@ async def interpret_user_command(
             if item.tool.tool_id == intent_output.suggested_tool_id:
                 selected_tool = item.tool
                 break
+        if not selected_tool:
+            direct_tool = await discovery_service.repo.get_by_id(intent_output.suggested_tool_id)
+            if direct_tool and direct_tool.get("enabled", True):
+                from app.tool_discovery.schemas import ToolDefinitionSchema
+                selected_tool = ToolDefinitionSchema(**direct_tool)
+
+    # If still not selected, resolve based on canonical intent mapping
+    if not selected_tool:
+        intent_to_tool = {
+            "delete_card": "trello_delete_card",
+            "archive_card": "trello_delete_card",
+            "create_card": "trello_create_card",
+            "create_list": "trello_create_list",
+            "move_card": "trello_move_card",
+            "update_card": "trello_update_card",
+            "search_cards": "trello_search_cards",
+            "list_cards": "trello_search_cards",
+            "get_workload": "report_get_workload",
+        }
+        target_tool_id = intent_to_tool.get(intent_output.intent)
+        if target_tool_id:
+            for item in discovered_tools:
+                if item.tool.tool_id == target_tool_id:
+                    selected_tool = item.tool
+                    break
+            if not selected_tool:
+                direct_tool = await discovery_service.repo.get_by_id(target_tool_id)
+                if direct_tool and direct_tool.get("enabled", True):
+                    from app.tool_discovery.schemas import ToolDefinitionSchema
+                    selected_tool = ToolDefinitionSchema(**direct_tool)
 
     if not selected_tool and discovered_tools and intent_output.intent != "unknown":
         selected_tool = discovered_tools[0].tool
@@ -458,6 +504,17 @@ async def interpret_user_command(
     # --------------------------------------------------------------------------
     # 6. MUTATION HANDLING: Task Creation, Movement, Update, Archive
     # --------------------------------------------------------------------------
+    if intent_output.parameters.get("board_name") or intent_output.parameters.get("board"):
+        param_board_info = await resolve_active_board(
+            approval_service.db,
+            requested_board_id=payload.board_id,
+            command=cmd,
+            parameters=intent_output.parameters,
+        )
+        if param_board_info.get("board_id"):
+            active_board_id = param_board_info["board_id"]
+            active_board_name = param_board_info["name"]
+
     if selected_tool and approval_required:
         tool_id = selected_tool.tool_id
         action_type = "CREATE_CARD"
@@ -482,6 +539,7 @@ async def interpret_user_command(
             category=selected_tool.category,
             parameters=params,
             board_id=active_board_id,
+            board_name=active_board_name,
             action_type=action_type,
         )
 
@@ -501,6 +559,11 @@ async def interpret_user_command(
             resolved_due = params.get("new_due_date") or params.get("due_date") or params.get("due")
             conversational_message = (
                 f"I have prepared a draft to set due date '{resolved_due}' on '{draft_response.draft.title}'. "
+                "Please review the preview below and confirm to execute it on Trello."
+            )
+        elif action_type in ("ARCHIVE_CARD", "DELETE_CARD"):
+            conversational_message = (
+                f"I have prepared a draft to delete '{draft_response.draft.title}' on your Trello board. "
                 "Please review the preview below and confirm to execute it on Trello."
             )
         else:
@@ -536,6 +599,7 @@ async def interpret_user_command(
                     intent_output.parameters.get("list_name")
                     or intent_output.parameters.get("status")
                     or intent_output.parameters.get("list")
+                    or (execution_result_data or {}).get("list_name")
                 )
                 if list_spec:
                     if cards:

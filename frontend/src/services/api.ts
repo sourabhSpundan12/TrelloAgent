@@ -3,16 +3,21 @@ import {
   AIInterpretResponse,
   ApprovalConfirmResult,
   ApprovalEditPayload,
+  AuthMessageResponse,
   AuthTokenResponse,
   AuthUser,
   Board,
+  ChangePasswordPayload,
   ChatSession,
+  ForgotPasswordPayload,
   HealthResponse,
   LoginCredentials,
   MCPDiscoveryResult,
   MCPServer,
   MCPServerRegisterPayload,
   NotificationsResponse,
+  ResetPasswordPayload,
+  VerifyResetCodePayload,
 } from '../types';
 
 const api = axios.create({
@@ -116,7 +121,10 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const isExcludedFromAuthExpired =
+      error.config?.url?.includes('/auth/login') ||
+      error.config?.url?.includes('/auth/change-password');
+    if (error.response?.status === 401 && !isExcludedFromAuthExpired) {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('atm:auth-expired', { detail: error.response?.data }));
       }
@@ -141,6 +149,29 @@ export const fetchCurrentUser = async (): Promise<AuthUser> => {
 
 export const registerUser = async (payload: any): Promise<AuthUser> => {
   const response = await api.post<AuthUser>('/api/v1/auth/register', payload);
+  return response.data;
+};
+
+export const changePassword = async (payload: ChangePasswordPayload): Promise<AuthMessageResponse> => {
+  const response = await api.post<AuthMessageResponse>('/api/v1/auth/change-password', payload);
+  if (response.data?.access_token) {
+    setStoredTokens(response.data.access_token, response.data.refresh_token);
+  }
+  return response.data;
+};
+
+export const requestForgotPassword = async (payload: ForgotPasswordPayload): Promise<AuthMessageResponse> => {
+  const response = await api.post<AuthMessageResponse>('/api/v1/auth/forgot-password', payload);
+  return response.data;
+};
+
+export const verifyResetCode = async (payload: VerifyResetCodePayload): Promise<AuthMessageResponse> => {
+  const response = await api.post<AuthMessageResponse>('/api/v1/auth/verify-reset-code', payload);
+  return response.data;
+};
+
+export const resetPassword = async (payload: ResetPasswordPayload): Promise<AuthMessageResponse> => {
+  const response = await api.post<AuthMessageResponse>('/api/v1/auth/reset-password', payload);
   return response.data;
 };
 

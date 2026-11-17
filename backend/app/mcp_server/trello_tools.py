@@ -140,6 +140,7 @@ async def trello_update_card(
     desc: Optional[str] = None,
     due_date: Optional[str] = None,
     member_name: Optional[str] = None,
+    board_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Update title, description, due date, and/or assign a member to an existing Trello card."""
     if not card_id or not card_id.strip():
@@ -148,7 +149,14 @@ async def trello_update_card(
         return {"status": "ERROR", "error": True, "message": "At least one field ('name', 'desc', 'due_date', or 'member_name') must be provided."}
     client = get_trello_client()
     try:
-        card = await client.update_card(card_id=card_id.strip(), name=name, desc=desc, due=due_date, member_name=member_name)
+        card = await client.update_card(
+            card_id=card_id.strip(),
+            name=name,
+            desc=desc,
+            due=due_date,
+            member_name=member_name,
+            board_id=board_id,
+        )
         return {"status": "SUCCESS", "action": "UPDATED", "card": card}
     except TrelloError as err:
         logger.warning(f"trello_update_card failed: {err}")

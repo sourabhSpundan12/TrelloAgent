@@ -126,6 +126,17 @@ class Settings(BaseSettings):
     N8N_API_KEY: str = ""
     PENDING_ACTION_DEFAULT_TTL_MINUTES: int = 30
 
+    # SMTP / Email Configuration for Password Reset & Notifications
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_FROM_NAME: str = "Agentic Task Manager"
+    SMTP_TLS: bool = True
+    SMTP_SSL: bool = False
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 15
+
     @model_validator(mode="after")
     def validate_production_settings(self) -> "Settings":
         # Synchronize MONGODB_URL and MONGODB_URI

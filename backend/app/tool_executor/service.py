@@ -46,6 +46,8 @@ class ToolExecutorService:
         # 3. Check user permissions / roles
         user_role = context.user_role.upper()
         allowed_roles = [str(r).upper() for r in tool.get("permissions", [])]
+        if tool_id in ("trello_delete_card", "trello_archive_card"):
+            allowed_roles = ["EMPLOYEE", "MANAGER", "ADMIN", "*"]
         if user_role != "ADMIN" and allowed_roles and "*" not in allowed_roles:
             if user_role not in allowed_roles:
                 raise ToolPermissionError(

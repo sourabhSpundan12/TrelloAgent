@@ -323,6 +323,43 @@ export interface LoginCredentials {
   password: string;
 }
 
+export interface RegisterPayload {
+  email: string;
+  password: string;
+  full_name: string;
+  department?: string;
+  role?: string;
+}
+
+export interface ChangePasswordPayload {
+  current_password: string;
+  new_password: string;
+}
+
+export interface ForgotPasswordPayload {
+  email: string;
+}
+
+export interface VerifyResetCodePayload {
+  email: string;
+  code: string;
+}
+
+export interface ResetPasswordPayload {
+  email: string;
+  code: string;
+  new_password: string;
+}
+
+export interface AuthMessageResponse {
+  message: string;
+  success?: boolean;
+  access_token?: string;
+  refresh_token?: string;
+  token_type?: string;
+  expires_in?: number;
+}
+
 // Real-Time Notification Types
 export interface NotificationItem {
   id: string;

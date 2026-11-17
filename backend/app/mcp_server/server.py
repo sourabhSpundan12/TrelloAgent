@@ -149,8 +149,16 @@ async def tool_trello_update_card(
     desc: Optional[str] = None,
     due_date: Optional[str] = None,
     member_name: Optional[str] = None,
+    board_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    return await trello_tools.trello_update_card(card_id=card_id, name=name, desc=desc, due_date=due_date, member_name=member_name)
+    return await trello_tools.trello_update_card(
+        card_id=card_id,
+        name=name,
+        desc=desc,
+        due_date=due_date,
+        member_name=member_name,
+        board_id=board_id,
+    )
 
 
 @mcp_server.tool(
