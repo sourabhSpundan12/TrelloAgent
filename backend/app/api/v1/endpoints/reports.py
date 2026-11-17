@@ -1,8 +1,11 @@
-from typing import Any, Dict
-from fastapi import APIRouter, Depends, status
+from typing import Any, Dict, Optional
+from fastapi import APIRouter, Depends, Query, status
+from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.core.dependencies import get_current_user
+from app.database.mongodb import get_database
 from app.mcp_server import trello_tools
 from app.schemas.user import UserResponse
+from app.services.board_service import get_active_board_id
 
 router = APIRouter()
 
@@ -14,10 +17,13 @@ router = APIRouter()
     description="Computes workload distribution and task velocity from live Trello board cards.",
 )
 async def get_workload_report(
+    board_id: Optional[str] = Query(None, description="Optional target Trello board ID"),
     current_user: UserResponse = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> Dict[str, Any]:
-    cards_res = await trello_tools.trello_list_cards()
-    lists_res = await trello_tools.trello_list_lists()
+    active_board_id = await get_active_board_id(db, board_id)
+    cards_res = await trello_tools.trello_list_cards(board_id=active_board_id)
+    lists_res = await trello_tools.trello_list_lists(board_id=active_board_id)
 
     cards = cards_res.get("cards", [])
     lists = lists_res.get("lists", [])

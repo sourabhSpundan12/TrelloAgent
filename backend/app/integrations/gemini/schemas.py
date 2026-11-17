@@ -35,6 +35,7 @@ class AIInterpretRequest(BaseModel):
     command: str = Field(..., min_length=1, max_length=1000, description="Natural language command from user")
     active_action_id: Optional[str] = None
     conversation_id: Optional[str] = None
+    board_id: Optional[str] = None
 
 
 class AIInterpretResponse(BaseModel):
@@ -42,6 +43,7 @@ class AIInterpretResponse(BaseModel):
     intent: str
     entity: str
     parameters: Dict[str, Any]
+    board_id: Optional[str] = None
     selected_tool_id: Optional[str] = None
     selected_tool_name: Optional[str] = None
     approval_required: bool = False

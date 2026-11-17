@@ -7,12 +7,14 @@ import {
   BarChart3,
   History,
   Wrench,
+  FolderKanban,
   Settings,
   ChevronLeft,
   ChevronRight,
   Cpu,
   X,
 } from 'lucide-react';
+import { useBoard } from '../../context/BoardContext';
 
 interface SidebarProps {
   currentTab: string;
@@ -31,6 +33,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isMobile = false,
   onCloseMobile,
 }) => {
+  const { activeBoard } = useBoard();
+
   const navItems = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'ai-assistant', label: 'AI Assistant', icon: Bot, badge: 'Agent' },
@@ -39,6 +43,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'reports', label: 'Reports', icon: BarChart3 },
     { id: 'activity', label: 'Activity History', icon: History },
     { id: 'tools', label: 'Tool Management', icon: Wrench, badge: '' },
+    { id: 'boards', label: 'Boards', icon: FolderKanban, badge: activeBoard ? 'Active' : '' },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 

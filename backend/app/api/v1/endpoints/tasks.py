@@ -1,13 +1,14 @@
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.core.dependencies import get_current_user
 from app.core.logging import logger
 from app.database.mongodb import get_database
 from app.mcp_server import trello_tools
 from app.schemas.user import UserResponse
+from app.services.board_service import get_active_board_id
 
 router = APIRouter()
 
@@ -19,11 +20,14 @@ router = APIRouter()
     description="Fetches live tasks directly from the configured Trello board via MCP tools.",
 )
 async def get_trello_tasks(
+    board_id: Optional[str] = Query(None, description="Optional target Trello board ID"),
     current_user: UserResponse = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> Dict[str, Any]:
     try:
-        cards_res = await trello_tools.trello_list_cards()
-        lists_res = await trello_tools.trello_list_lists()
+        active_board_id = await get_active_board_id(db, board_id)
+        cards_res = await trello_tools.trello_list_cards(board_id=active_board_id)
+        lists_res = await trello_tools.trello_list_lists(board_id=active_board_id)
 
         lists = lists_res.get("lists", [])
         cards = cards_res.get("cards", [])
@@ -71,13 +75,15 @@ async def get_trello_tasks(
     description="Fetches live Trello board members and platform users, computing real assigned task counts from Trello cards.",
 )
 async def get_team_workload(
+    board_id: Optional[str] = Query(None, description="Optional target Trello board ID"),
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> Dict[str, Any]:
     try:
-        cards_res = await trello_tools.trello_list_cards()
-        lists_res = await trello_tools.trello_list_lists()
-        members_res = await trello_tools.trello_list_board_members()
+        active_board_id = await get_active_board_id(db, board_id)
+        cards_res = await trello_tools.trello_list_cards(board_id=active_board_id)
+        lists_res = await trello_tools.trello_list_lists(board_id=active_board_id)
+        members_res = await trello_tools.trello_list_board_members(board_id=active_board_id)
 
         cards = cards_res.get("cards", [])
         lists = lists_res.get("lists", [])

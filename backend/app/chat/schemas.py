@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_serializer
 class ChatSessionSchema(BaseModel):
     id: str  # conversation_id
     user_id: str
+    board_id: Optional[str] = None
     title: str
     created_at: datetime
     updated_at: datetime
@@ -27,6 +28,7 @@ class ChatMessageSchema(BaseModel):
     id: str
     user_id: str
     conversation_id: Optional[str] = None
+    board_id: Optional[str] = None
     sender: str  # 'user' or 'assistant'
     content: str
     timestamp: str

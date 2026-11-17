@@ -37,6 +37,7 @@ import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { ChatMessage, ActionApprovalPreview, ApprovalEditPayload, ChatSession } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useBoard } from '../context/BoardContext';
 import {
   interpretCommand,
   confirmApproval,
@@ -68,6 +69,7 @@ All write operations present a live preview draft for your confirmation before e
 
 export const AIAssistantPage: React.FC = () => {
   const { isAuthenticated, openLoginModal, user } = useAuth();
+  const { activeBoard, activeBoardId } = useBoard();
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -261,7 +263,7 @@ export const AIAssistantPage: React.FC = () => {
     if (!isAuthenticated) return;
     try {
       setIsSessionsLoading(true);
-      const res = await fetchChatSessions();
+      const res = await fetchChatSessions(undefined, activeBoardId || undefined);
       const sessionList = res.sessions || [];
       setSessions(sessionList);
 
@@ -281,10 +283,10 @@ export const AIAssistantPage: React.FC = () => {
     }
   };
 
-  // Load chat sessions from MongoDB Atlas on mount or when user authenticates
+  // Load chat sessions from MongoDB Atlas on mount, auth change, or active board change
   useEffect(() => {
     loadSessionsAndSelect();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, activeBoardId]);
 
   useEffect(() => {
     scrollToBottom();
@@ -319,7 +321,13 @@ export const AIAssistantPage: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const res = await interpretCommand(query, activeActionId || undefined, effectiveSessionId);
+      const res = await interpretCommand(
+        query,
+        activeActionId || undefined,
+        effectiveSessionId,
+        undefined,
+        activeBoardId || undefined
+      );
       setIsLoading(false);
 
       if (res.conversation_id && res.conversation_id !== currentSessionId) {
@@ -800,9 +808,20 @@ export const AIAssistantPage: React.FC = () => {
                 <Bot className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 tracking-wide truncate">
-                  {currentSessionTitle}
-                </h3>
+                <div className="flex items-center space-x-2">
+                  <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 tracking-wide truncate">
+                    {currentSessionTitle}
+                  </h3>
+                  {activeBoard && (
+                    <span
+                      title={`Active Board: ${activeBoard.name} (${activeBoard.board_id})`}
+                      className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 truncate max-w-[160px]"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 shrink-0" />
+                      <span className="truncate">{activeBoard.name}</span>
+                    </span>
+                  )}
+                </div>
                 <p className="text-[10px] text-slate-400 font-mono flex items-center space-x-1.5 truncate">
                   <span
                     className={`w-1.5 h-1.5 rounded-full shrink-0 ${

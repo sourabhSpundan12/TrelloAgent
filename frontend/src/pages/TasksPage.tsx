@@ -16,10 +16,12 @@ import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { EmptyState } from '../components/common/EmptyState';
 import { useAuth } from '../context/AuthContext';
+import { useBoard } from '../context/BoardContext';
 import { fetchTrelloTasks } from '../services/api';
 
 export const TasksPage: React.FC = () => {
   const { isAuthenticated } = useAuth();
+  const { activeBoard, activeBoardId } = useBoard();
   const [cards, setCards] = useState<any[]>([]);
   const [lists, setLists] = useState<any[]>([]);
   const [boardId, setBoardId] = useState<string | null>(null);
@@ -32,11 +34,11 @@ export const TasksPage: React.FC = () => {
     if (!isAuthenticated) return;
     setIsLoading(true);
     try {
-      const data = await fetchTrelloTasks();
+      const data = await fetchTrelloTasks(undefined, activeBoardId || undefined);
       if (data && data.status === 'SUCCESS') {
         setCards(data.cards || []);
         setLists(data.lists || []);
-        setBoardId(data.board_id || null);
+        setBoardId(data.board_id || activeBoardId || null);
       }
     } catch (err) {
       console.error('Failed to fetch Trello tasks:', err);
@@ -47,7 +49,7 @@ export const TasksPage: React.FC = () => {
 
   useEffect(() => {
     loadTasks();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, activeBoardId]);
 
   const filteredCards = useMemo(() => {
     return cards.filter((card) => {
@@ -76,7 +78,7 @@ export const TasksPage: React.FC = () => {
           </div>
           <div>
             <h3 className="font-semibold text-brand-900 dark:text-brand-300">
-              Agentic Task Interaction (No Manual Forms Needed)
+              Agentic Task Interaction {activeBoard ? `(${activeBoard.name})` : ''}
             </h3>
             <p className="text-brand-700/80 dark:text-brand-400/80 text-[11px] mt-0.5">
               To create or move cards, open the AI Assistant and speak naturally: &quot;Create task card Login API&quot; or &quot;Move Login API to Doing&quot;.
