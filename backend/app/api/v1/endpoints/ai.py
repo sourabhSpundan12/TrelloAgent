@@ -2,7 +2,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.approvals.models import ApprovalStatus
 from app.approvals.schemas import ApprovalEditRequest
@@ -20,6 +20,7 @@ from app.database.mongodb import get_database
 from app.integrations.gemini.schemas import AIInterpretRequest, AIInterpretResponse
 from app.integrations.gemini.service import GeminiService
 from app.schemas.user import UserResponse
+from app.services.board_service import get_active_board_id
 from app.tool_discovery.service import ToolDiscoveryService
 from app.tool_executor.interfaces import ExecutionContext
 from app.tool_executor.service import ToolExecutorService
@@ -44,11 +45,13 @@ def get_ai_services(db: AsyncIOMotorDatabase = Depends(get_database)):
     description="Fetches all chat sessions (threads) for the authenticated user from MongoDB Atlas.",
 )
 async def list_user_chat_sessions(
+    board_id: Optional[str] = Query(None, description="Filter sessions by Trello board ID"),
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> ChatSessionListResponse:
     chat_repo = ChatRepository(db)
-    sessions = await chat_repo.list_sessions(user_id=current_user.id, limit=50)
+    resolved_board_id = await get_active_board_id(db, board_id)
+    sessions = await chat_repo.list_sessions(user_id=current_user.id, board_id=resolved_board_id, limit=50)
     parsed = []
     for s in sessions:
         try:
@@ -148,6 +151,7 @@ async def interpret_user_command(
     services=Depends(get_ai_services),
 ) -> AIInterpretResponse:
     discovery_service, gemini_service, approval_service, tool_executor, chat_repo = services
+    active_board_id = await get_active_board_id(approval_service.db, payload.board_id)
     user_role_str = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
     cmd = payload.command.strip()
     cmd_lower = cmd.lower()
@@ -161,6 +165,7 @@ async def interpret_user_command(
         "id": user_msg_id,
         "user_id": current_user.id,
         "conversation_id": conv_id,
+        "board_id": active_board_id,
         "sender": "user",
         "content": cmd,
         "timestamp": now_str,
@@ -214,6 +219,7 @@ async def interpret_user_command(
                 "id": asst_msg_id,
                 "user_id": current_user.id,
                 "conversation_id": conv_id,
+                "board_id": active_board_id,
                 "sender": "assistant",
                 "content": asst_content,
                 "timestamp": now_str,
@@ -245,6 +251,7 @@ async def interpret_user_command(
                 execution_result=confirm_res.execution_result,
                 conversational_message=asst_content,
                 conversation_id=conv_id,
+                board_id=active_board_id,
             )
         except Exception as e:
             logger.error(f"Conversational confirmation failed: {e}")
@@ -259,6 +266,7 @@ async def interpret_user_command(
                 candidate_tools_count=0,
                 conversational_message=error_content,
                 conversation_id=conv_id,
+                board_id=active_board_id,
             )
 
     # --------------------------------------------------------------------------
@@ -285,6 +293,7 @@ async def interpret_user_command(
             "id": asst_msg_id,
             "user_id": current_user.id,
             "conversation_id": conv_id,
+            "board_id": active_board_id,
             "sender": "assistant",
             "content": asst_content,
             "timestamp": now_str,
@@ -308,6 +317,7 @@ async def interpret_user_command(
             action_id=act_id,
             conversational_message=asst_content,
             conversation_id=conv_id,
+            board_id=active_board_id,
         )
 
     # --------------------------------------------------------------------------
@@ -374,6 +384,7 @@ async def interpret_user_command(
             "id": asst_msg_id,
             "user_id": current_user.id,
             "conversation_id": conv_id,
+            "board_id": active_board_id,
             "sender": "assistant",
             "content": asst_content,
             "timestamp": now_str,
@@ -404,6 +415,7 @@ async def interpret_user_command(
             execution_preview=preview_data,
             conversational_message=asst_content,
             conversation_id=conv_id,
+            board_id=active_board_id,
         )
 
     # --------------------------------------------------------------------------
@@ -469,6 +481,7 @@ async def interpret_user_command(
             tool_name=selected_tool.name,
             category=selected_tool.category,
             parameters=params,
+            board_id=active_board_id,
             action_type=action_type,
         )
 
@@ -500,6 +513,7 @@ async def interpret_user_command(
     # 7. READ OPERATION EXECUTION: Listing, Searching, Workload Reports
     # --------------------------------------------------------------------------
     elif selected_tool and not approval_required:
+        intent_output.parameters.setdefault("board_id", active_board_id)
         exec_context = ExecutionContext(
             user_id=current_user.id,
             user_role=user_role_str,
@@ -562,6 +576,7 @@ async def interpret_user_command(
         "id": asst_msg_id,
         "user_id": current_user.id,
         "conversation_id": conv_id,
+        "board_id": active_board_id,
         "sender": "assistant",
         "content": conversational_message,
         "timestamp": now_str,
@@ -600,4 +615,5 @@ async def interpret_user_command(
         execution_result=execution_result_data,
         conversational_message=conversational_message,
         conversation_id=conv_id,
+        board_id=active_board_id,
     )

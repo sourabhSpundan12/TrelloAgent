@@ -1,10 +1,11 @@
-from typing import Any, Dict
-from fastapi import APIRouter, Depends, status
+from typing import Any, Dict, Optional
+from fastapi import APIRouter, Depends, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.core.dependencies import get_current_user
 from app.database.mongodb import get_database
 from app.mcp_server import trello_tools
 from app.schemas.user import UserResponse
+from app.services.board_service import get_active_board_id
 
 router = APIRouter()
 
@@ -16,6 +17,7 @@ router = APIRouter()
     description="Calculates live statistics from Trello board cards, active tools, and pending actions in MongoDB Atlas.",
 )
 async def get_overview_stats(
+    board_id: Optional[str] = Query(None, description="Optional target Trello board ID"),
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> Dict[str, Any]:
@@ -26,8 +28,9 @@ async def get_overview_stats(
     done_count = 0
 
     try:
-        cards_res = await trello_tools.trello_list_cards()
-        lists_res = await trello_tools.trello_list_lists()
+        active_board_id = await get_active_board_id(db, board_id)
+        cards_res = await trello_tools.trello_list_cards(board_id=active_board_id)
+        lists_res = await trello_tools.trello_list_lists(board_id=active_board_id)
         list_map = {l["id"]: l["name"].lower() for l in lists_res.get("lists", [])}
 
         cards = cards_res.get("cards", [])

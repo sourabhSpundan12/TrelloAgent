@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider } from './context/AuthContext';
+import { BoardProvider } from './context/BoardContext';
 import { LoginModal } from './components/auth/LoginModal';
 import { MainLayout } from './components/layout/MainLayout';
 import { OverviewPage } from './pages/OverviewPage';
@@ -10,6 +11,7 @@ import { EmployeesPage } from './pages/EmployeesPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { ActivityHistoryPage } from './pages/ActivityHistoryPage';
 import { ToolManagementPage } from './pages/ToolManagementPage';
+import { BoardsPage } from './pages/BoardsPage';
 import { SettingsPage } from './pages/SettingsPage';
 
 export const AppContent: React.FC = () => {
@@ -31,6 +33,8 @@ export const AppContent: React.FC = () => {
         return <ActivityHistoryPage />;
       case 'tools':
         return <ToolManagementPage />;
+      case 'boards':
+        return <BoardsPage onNavigate={setCurrentTab} />;
       case 'settings':
         return <SettingsPage />;
       default:
@@ -52,7 +56,9 @@ export const App: React.FC = () => {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <AppContent />
+        <BoardProvider>
+          <AppContent />
+        </BoardProvider>
       </AuthProvider>
     </ThemeProvider>
   );

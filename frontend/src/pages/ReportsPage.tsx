@@ -14,10 +14,12 @@ import { Card, CardHeader } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { useAuth } from '../context/AuthContext';
+import { useBoard } from '../context/BoardContext';
 import { fetchWorkloadReport } from '../services/api';
 
 export const ReportsPage: React.FC = () => {
   const { isAuthenticated } = useAuth();
+  const { activeBoard, activeBoardId } = useBoard();
   const [report, setReport] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -25,7 +27,7 @@ export const ReportsPage: React.FC = () => {
     if (!isAuthenticated) return;
     setIsLoading(true);
     try {
-      const data = await fetchWorkloadReport();
+      const data = await fetchWorkloadReport(undefined, activeBoardId || undefined);
       if (data && data.status === 'SUCCESS') {
         setReport(data);
       }
@@ -38,7 +40,7 @@ export const ReportsPage: React.FC = () => {
 
   useEffect(() => {
     loadReport();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, activeBoardId]);
 
   const totalTasks = report?.total_tasks || 0;
   const completed = report?.completed || 0;

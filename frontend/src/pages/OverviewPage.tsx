@@ -18,6 +18,7 @@ import { Card, CardHeader, CardContent } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { useAuth } from '../context/AuthContext';
+import { useBoard } from '../context/BoardContext';
 import { fetchOverviewStats } from '../services/api';
 
 interface OverviewPageProps {
@@ -26,6 +27,7 @@ interface OverviewPageProps {
 
 export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
   const { isAuthenticated } = useAuth();
+  const { activeBoard, activeBoardId } = useBoard();
   const [stats, setStats] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -33,7 +35,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
     if (!isAuthenticated) return;
     setIsLoading(true);
     try {
-      const data = await fetchOverviewStats();
+      const data = await fetchOverviewStats(undefined, activeBoardId || undefined);
       if (data && data.status === 'SUCCESS') {
         setStats(data);
       }
@@ -46,7 +48,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
 
   useEffect(() => {
     loadStats();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, activeBoardId]);
 
   const tasks = stats?.tasks || { total: 0, todo: 0, doing: 0, done: 0, completion_rate: 0 };
   const system = stats?.system || { active_tools: 9, pending_approvals: 0, executed_mutations: 0 };

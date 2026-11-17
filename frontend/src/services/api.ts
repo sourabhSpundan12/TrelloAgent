@@ -5,6 +5,7 @@ import {
   ApprovalEditPayload,
   AuthTokenResponse,
   AuthUser,
+  Board,
   ChatSession,
   HealthResponse,
   LoginCredentials,
@@ -160,7 +161,8 @@ export const interpretCommand = async (
   command: string,
   activeActionId?: string,
   conversationId?: string,
-  token?: string
+  token?: string,
+  boardId?: string
 ): Promise<AIInterpretResponse> => {
   const headers = token ? getAuthHeaders(token) : undefined;
   const payload: any = { command };
@@ -169,6 +171,9 @@ export const interpretCommand = async (
   }
   if (conversationId) {
     payload.conversation_id = conversationId;
+  }
+  if (boardId) {
+    payload.board_id = boardId;
   }
   const response = await api.post<AIInterpretResponse>(
     '/api/v1/ai/interpret',
@@ -180,12 +185,17 @@ export const interpretCommand = async (
 
 // --- Phase 7A: Persistent Chat History & ChatGPT-style Sessions ---
 export const fetchChatSessions = async (
-  token?: string
+  token?: string,
+  boardId?: string
 ): Promise<{ sessions: ChatSession[]; total: number }> => {
   const headers = token ? getAuthHeaders(token) : undefined;
+  const params = boardId ? { board_id: boardId } : undefined;
   const response = await api.get<{ sessions: ChatSession[]; total: number }>(
     '/api/v1/ai/sessions',
-    headers ? { headers } : undefined
+    {
+      headers: headers ? headers : undefined,
+      params,
+    }
   );
   return response.data;
 };
@@ -240,15 +250,23 @@ export const clearChatHistory = async (token?: string): Promise<{ status: string
 };
 
 // --- Phase 7A: Live Trello Tasks, Overview, Activities, and Workload Reports ---
-export const fetchTrelloTasks = async (token?: string): Promise<any> => {
+export const fetchTrelloTasks = async (token?: string, boardId?: string): Promise<any> => {
   const headers = token ? getAuthHeaders(token) : undefined;
-  const response = await api.get('/api/v1/tasks/trello', headers ? { headers } : undefined);
+  const params = boardId ? { board_id: boardId } : undefined;
+  const response = await api.get('/api/v1/tasks/trello', {
+    headers: headers ? headers : undefined,
+    params,
+  });
   return response.data;
 };
 
-export const fetchOverviewStats = async (token?: string): Promise<any> => {
+export const fetchOverviewStats = async (token?: string, boardId?: string): Promise<any> => {
   const headers = token ? getAuthHeaders(token) : undefined;
-  const response = await api.get('/api/v1/overview/stats', headers ? { headers } : undefined);
+  const params = boardId ? { board_id: boardId } : undefined;
+  const response = await api.get('/api/v1/overview/stats', {
+    headers: headers ? headers : undefined,
+    params,
+  });
   return response.data;
 };
 
@@ -258,15 +276,72 @@ export const fetchLiveActivities = async (token?: string): Promise<any> => {
   return response.data;
 };
 
-export const fetchWorkloadReport = async (token?: string): Promise<any> => {
+export const fetchWorkloadReport = async (token?: string, boardId?: string): Promise<any> => {
   const headers = token ? getAuthHeaders(token) : undefined;
-  const response = await api.get('/api/v1/reports/workload', headers ? { headers } : undefined);
+  const params = boardId ? { board_id: boardId } : undefined;
+  const response = await api.get('/api/v1/reports/workload', {
+    headers: headers ? headers : undefined,
+    params,
+  });
   return response.data;
 };
 
-export const fetchTeamWorkload = async (token?: string): Promise<any> => {
+export const fetchTeamWorkload = async (token?: string, boardId?: string): Promise<any> => {
   const headers = token ? getAuthHeaders(token) : undefined;
-  const response = await api.get('/api/v1/tasks/team', headers ? { headers } : undefined);
+  const params = boardId ? { board_id: boardId } : undefined;
+  const response = await api.get('/api/v1/tasks/team', {
+    headers: headers ? headers : undefined,
+    params,
+  });
+  return response.data;
+};
+
+// --- Dynamic Trello Board Management ---
+export const fetchBoards = async (token?: string): Promise<{ boards: Board[]; active_board_id: string; total: number }> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.get<{ status: string; active_board_id: string; total: number; boards: Board[] }>(
+    '/api/v1/boards',
+    headers ? { headers } : undefined
+  );
+  return response.data;
+};
+
+export const fetchActiveBoard = async (token?: string): Promise<Board> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.get<Board>('/api/v1/boards/active', headers ? { headers } : undefined);
+  return response.data;
+};
+
+export const addBoard = async (
+  payload: { board_id: string; name?: string; desc?: string; url?: string },
+  token?: string
+): Promise<Board> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.post<Board>('/api/v1/boards', payload, headers ? { headers } : undefined);
+  return response.data;
+};
+
+export const activateBoard = async (boardId: string, token?: string): Promise<Board> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.post<Board>(`/api/v1/boards/${boardId}/activate`, {}, headers ? { headers } : undefined);
+  return response.data;
+};
+
+export const deactivateBoard = async (boardId: string, token?: string): Promise<Board> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.post<Board>(`/api/v1/boards/${boardId}/deactivate`, {}, headers ? { headers } : undefined);
+  return response.data;
+};
+
+export const toggleBoardStatus = async (boardId: string, token?: string): Promise<Board> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.post<Board>(`/api/v1/boards/${boardId}/toggle`, {}, headers ? { headers } : undefined);
+  return response.data;
+};
+
+export const deleteBoard = async (boardId: string, token?: string): Promise<{ status: string; message: string }> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.delete<{ status: string; message: string }>(`/api/v1/boards/${boardId}`, headers ? { headers } : undefined);
   return response.data;
 };
 

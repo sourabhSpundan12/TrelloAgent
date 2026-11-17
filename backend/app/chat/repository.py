@@ -15,6 +15,7 @@ class ChatRepository:
         message_dict.setdefault("created_at", now)
         conv_id = message_dict.get("conversation_id")
         user_id = message_dict.get("user_id")
+        board_id = message_dict.get("board_id")
 
         await self.collection.insert_one(message_dict)
         message_dict.pop("_id", None)
@@ -29,6 +30,7 @@ class ChatRepository:
                 await self.sessions_collection.insert_one({
                     "id": conv_id,
                     "user_id": user_id,
+                    "board_id": board_id,
                     "title": title,
                     "created_at": now,
                     "updated_at": now,
@@ -38,6 +40,9 @@ class ChatRepository:
                 update_fields: Dict[str, Any] = {
                     "updated_at": now,
                 }
+                if board_id and not existing.get("board_id"):
+                    update_fields["board_id"] = board_id
+
                 # If existing title is generic and a user message arrives, update title
                 if existing.get("title") in ("New Chat", "New Conversation") and message_dict.get("sender") == "user" and clean_title:
                     update_fields["title"] = clean_title
@@ -52,38 +57,43 @@ class ChatRepository:
 
         return message_dict
 
-    async def list_sessions(self, user_id: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """Retrieves conversation sessions for a user in reverse chronological order."""
-        cursor = self.sessions_collection.find({"user_id": user_id}).sort("updated_at", -1).limit(limit)
+    async def list_sessions(
+        self, user_id: str, board_id: Optional[str] = None, limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Retrieves conversation sessions for a user, filtered by board_id if provided."""
+        query: Dict[str, Any] = {"user_id": user_id}
+        if board_id:
+            query["board_id"] = board_id
+
+        cursor = self.sessions_collection.find(query).sort("updated_at", -1).limit(limit)
         sessions = []
         async for doc in cursor:
             doc.pop("_id", None)
             sessions.append(doc)
 
-        # Backward compatibility: if no explicit sessions exist yet but user has messages
-        if not sessions:
-            legacy_count = await self.collection.count_documents({"user_id": user_id})
-            if legacy_count > 0:
-                first_user_msg = await self.collection.find_one({"user_id": user_id, "sender": "user"})
-                raw_title = first_user_msg.get("content", "General Chat") if first_user_msg else "General Chat"
-                title = re.sub(r"\s+", " ", str(raw_title))[:45]
-                default_session_id = "SES-DEFAULT"
-                now = datetime.now(timezone.utc)
-                await self.collection.update_many(
-                    {"user_id": user_id, "conversation_id": {"$exists": False}},
-                    {"$set": {"conversation_id": default_session_id}},
+        # Migration / backward compatibility:
+        # If user has no sessions with this board_id, but has legacy sessions with no board_id,
+        # we check if those legacy sessions should be associated with this initial board_id.
+        if not sessions and board_id:
+            legacy_count = await self.sessions_collection.count_documents(
+                {"user_id": user_id, "board_id": {"$exists": False}}
+            )
+            all_boarded_count = await self.sessions_collection.count_documents(
+                {"user_id": user_id, "board_id": {"$exists": True}}
+            )
+            if legacy_count > 0 and all_boarded_count == 0:
+                await self.sessions_collection.update_many(
+                    {"user_id": user_id, "board_id": {"$exists": False}},
+                    {"$set": {"board_id": board_id}},
                 )
-                session_doc = {
-                    "id": default_session_id,
-                    "user_id": user_id,
-                    "title": title,
-                    "created_at": now,
-                    "updated_at": now,
-                    "message_count": legacy_count,
-                }
-                await self.sessions_collection.insert_one(dict(session_doc))
-                session_doc.pop("_id", None)
-                sessions.append(session_doc)
+                await self.collection.update_many(
+                    {"user_id": user_id, "board_id": {"$exists": False}},
+                    {"$set": {"board_id": board_id}},
+                )
+                cursor = self.sessions_collection.find({"user_id": user_id, "board_id": board_id}).sort("updated_at", -1).limit(limit)
+                async for doc in cursor:
+                    doc.pop("_id", None)
+                    sessions.append(doc)
 
         return sessions
 

@@ -4,6 +4,7 @@ from app.api.v1.endpoints import (
     ai,
     approvals,
     auth,
+    boards,
     health,
     mcp,
     notifications,
@@ -44,6 +45,9 @@ api_v1_router.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])
 api_v1_router.include_router(overview.router, prefix="/overview", tags=["Overview"])
 api_v1_router.include_router(activities.router, prefix="/activities", tags=["Activities"])
 api_v1_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
+
+# Dynamic Trello Board Management
+api_v1_router.include_router(boards.router, prefix="/boards", tags=["Board Management"])
 
 # Real-time Dynamic Notifications
 api_v1_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])

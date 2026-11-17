@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { useBoard } from '../../context/BoardContext';
 import { Button } from '../common/Button';
 import { NotificationItem } from '../../types';
 import { fetchNotifications, markNotificationsRead } from '../../services/api';
@@ -35,6 +36,7 @@ interface TopNavbarProps {
 export const TopNavbar: React.FC<TopNavbarProps> = ({ currentTab, onTabChange, onToggleMobileSidebar }) => {
   const { theme, toggleTheme } = useTheme();
   const { user, isAuthenticated, logout, openLoginModal } = useAuth();
+  const { activeBoard } = useBoard();
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread'>('all');
@@ -142,6 +144,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ currentTab, onTabChange, o
     reports: { title: 'Performance Reports', category: 'Metrics & Rollups' },
     activity: { title: 'Activity History', category: 'Audit Trail & Events' },
     tools: { title: 'Dynamic Tool Management', category: 'Registry & Discovery' },
+    boards: { title: 'Board Management', category: 'Trello Board Configuration' },
     settings: { title: 'Platform Settings', category: 'Configuration & Providers' },
   };
 
@@ -167,9 +170,20 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ currentTab, onTabChange, o
             <span>/</span>
             <span className="truncate">{currentMeta.category}</span>
           </div>
-          <h2 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white tracking-tight truncate">
-            {currentMeta.title}
-          </h2>
+          <div className="flex items-center space-x-2">
+            <h2 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white tracking-tight truncate">
+              {currentMeta.title}
+            </h2>
+            {activeBoard && (
+              <span
+                title={`Active Trello Board: ${activeBoard.name} (${activeBoard.board_id})`}
+                className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 max-w-[140px] md:max-w-[200px] truncate"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 shrink-0" />
+                <span className="truncate">{activeBoard.name}</span>
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

@@ -108,7 +108,7 @@ class MockTrelloCreateCardExecutor(BaseExecutor):
                 # Resolve list_id dynamically from list_name if missing
                 if not list_id or list_id.startswith("list_"):
                     target_list_name = parameters.get("list_name") or "To Do"
-                    lists_res = await trello_tools.trello_list_lists()
+                    lists_res = await trello_tools.trello_list_lists(board_id=board_id)
                     raw_target = target_list_name.lower().strip()
                     cleaned_target = re.sub(r"\s+(?:list|column)$", "", raw_target, flags=re.IGNORECASE).strip()
                     norm_target = re.sub(r"[\s\-_]+", "", cleaned_target)
@@ -272,7 +272,7 @@ class MockTrelloMoveCardExecutor(BaseExecutor):
 
                 # Resolve card_id dynamically if missing
                 if not card_id or card_id.startswith("card_") or card_id == "c101":
-                    cards_res = await trello_tools.trello_list_cards()
+                    cards_res = await trello_tools.trello_list_cards(board_id=board_id)
                     matched_c = find_best_matching_card(cards_res.get("cards", []), card_name)
                     if matched_c:
                         card_id = matched_c["id"]
@@ -280,7 +280,7 @@ class MockTrelloMoveCardExecutor(BaseExecutor):
 
                 # Resolve list_id dynamically if missing
                 if not list_id or list_id.startswith("list_"):
-                    lists_res = await trello_tools.trello_list_lists()
+                    lists_res = await trello_tools.trello_list_lists(board_id=board_id)
                     raw_target = target_status.lower().strip()
                     cleaned_target = re.sub(r"\s+(?:list|column)$", "", raw_target, flags=re.IGNORECASE).strip()
                     norm_target = re.sub(r"[\s\-_]+", "", cleaned_target)
@@ -549,8 +549,9 @@ class MockTrelloSearchExecutor(BaseExecutor):
         if settings.TRELLO_API_KEY and settings.TRELLO_TOKEN:
             try:
                 from app.mcp_server import trello_tools
-                cards_res = await trello_tools.trello_list_cards()
-                lists_res = await trello_tools.trello_list_lists()
+                board_id = parameters.get("board_id") or settings.TRELLO_BOARD_ID or None
+                cards_res = await trello_tools.trello_list_cards(board_id=board_id)
+                lists_res = await trello_tools.trello_list_lists(board_id=board_id)
                 list_map = {l["id"]: l["name"] for l in lists_res.get("lists", [])}
 
                 cards = []
@@ -623,8 +624,9 @@ class MockReportWorkloadExecutor(BaseExecutor):
         if settings.TRELLO_API_KEY and settings.TRELLO_TOKEN:
             try:
                 from app.mcp_server import trello_tools
-                cards_res = await trello_tools.trello_list_cards()
-                lists_res = await trello_tools.trello_list_lists()
+                board_id = parameters.get("board_id") or settings.TRELLO_BOARD_ID or None
+                cards_res = await trello_tools.trello_list_cards(board_id=board_id)
+                lists_res = await trello_tools.trello_list_lists(board_id=board_id)
                 list_map = {l["id"]: l["name"].lower() for l in lists_res.get("lists", [])}
 
                 total = len(cards_res.get("cards", []))

@@ -18,6 +18,7 @@ import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { EmptyState } from '../components/common/EmptyState';
 import { useAuth } from '../context/AuthContext';
+import { useBoard } from '../context/BoardContext';
 import { fetchTeamWorkload } from '../services/api';
 import { Employee } from '../types';
 
@@ -94,6 +95,7 @@ const MemberAvatar: React.FC<{
 
 export const EmployeesPage: React.FC = () => {
   const { isAuthenticated } = useAuth();
+  const { activeBoard, activeBoardId } = useBoard();
   const [employees, setEmployees] = useState<RealTeamMember[]>([]);
   const [unassignedTasks, setUnassignedTasks] = useState<UnassignedTask[]>([]);
   const [unassignedCount, setUnassignedCount] = useState<number>(0);
@@ -106,7 +108,7 @@ export const EmployeesPage: React.FC = () => {
   const loadTeam = async () => {
     setIsLoading(true);
     try {
-      const data = await fetchTeamWorkload();
+      const data = await fetchTeamWorkload(undefined, activeBoardId || undefined);
       if (data && data.status === 'SUCCESS') {
         setEmployees(Array.isArray(data.members) ? data.members : []);
         setUnassignedTasks(Array.isArray(data.unassigned_tasks) ? data.unassigned_tasks : []);
@@ -121,7 +123,7 @@ export const EmployeesPage: React.FC = () => {
 
   useEffect(() => {
     loadTeam();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, activeBoardId]);
 
   const departments = useMemo(() => {
     return Array.from(new Set(employees.map((e) => e.department).filter(Boolean)));

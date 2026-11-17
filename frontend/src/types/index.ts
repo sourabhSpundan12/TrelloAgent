@@ -81,9 +81,21 @@ export interface ApprovalConfirmResult {
   message: string;
 }
 
+export interface Board {
+  id: string;
+  board_id: string;
+  name: string;
+  desc?: string;
+  url?: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface ChatSession {
   id: string;
   user_id: string;
+  board_id?: string;
   title: string;
   created_at: string;
   updated_at: string;
@@ -93,6 +105,7 @@ export interface ChatSession {
 export interface ChatMessage {
   id: string;
   conversation_id?: string;
+  board_id?: string;
   sender: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
