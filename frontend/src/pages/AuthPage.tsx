@@ -287,7 +287,7 @@ export const AuthPage: React.FC = () => {
     <div className="min-h-screen w-full flex flex-col justify-center items-center p-4 sm:p-6 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors relative">
       {/* Floating Error Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 flex items-center space-x-3 px-4 py-3 bg-rose-600 text-white rounded-2xl shadow-2xl border border-rose-500 animate-in fade-in slide-in-from-top-4 duration-200 max-w-sm sm:max-w-md">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999] flex items-center space-x-3 px-4 py-3 bg-rose-600 text-white rounded-2xl shadow-2xl border border-rose-500 animate-in fade-in slide-in-from-top-4 duration-200 max-w-sm sm:max-w-md">
           <AlertCircle className="w-5 h-5 shrink-0 text-white" />
           <p className="text-xs sm:text-sm font-semibold tracking-wide flex-1">{toastMessage}</p>
           <button

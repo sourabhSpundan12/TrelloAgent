@@ -62,29 +62,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (credentials: LoginCredentials) => {
-    setIsLoading(true);
-    try {
-      await loginUser(credentials);
-      const userData = await fetchCurrentUser();
-      setUser(userData);
-      setLoginModalOpen(false);
-    } finally {
-      setIsLoading(false);
-    }
+    await loginUser(credentials);
+    const userData = await fetchCurrentUser();
+    setUser(userData);
+    setLoginModalOpen(false);
   };
 
   const register = async (payload: RegisterPayload) => {
-    setIsLoading(true);
-    try {
-      await registerUser(payload);
-      // Automatically log in newly registered user
-      await loginUser({ email: payload.email, password: payload.password });
-      const userData = await fetchCurrentUser();
-      setUser(userData);
-      setLoginModalOpen(false);
-    } finally {
-      setIsLoading(false);
-    }
+    await registerUser(payload);
+    // Automatically log in newly registered user
+    await loginUser({ email: payload.email, password: payload.password });
+    const userData = await fetchCurrentUser();
+    setUser(userData);
+    setLoginModalOpen(false);
   };
 
   const logout = () => {
