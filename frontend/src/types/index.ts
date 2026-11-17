@@ -323,6 +323,14 @@ export interface LoginCredentials {
   password: string;
 }
 
+export interface RegisterPayload {
+  email: string;
+  password: string;
+  full_name: string;
+  department?: string;
+  role?: string;
+}
+
 // Real-Time Notification Types
 export interface NotificationItem {
   id: string;

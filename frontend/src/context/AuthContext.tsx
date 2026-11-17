@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { AuthUser, LoginCredentials } from '../types';
+import { AuthUser, LoginCredentials, RegisterPayload } from '../types';
 import {
   clearStoredTokens,
   fetchCurrentUser,
   getStoredToken,
   loginUser,
+  registerUser,
 } from '../services/api';
 
 interface AuthContextType {
@@ -13,6 +14,7 @@ interface AuthContextType {
   isLoading: boolean;
   loginModalOpen: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
+  register: (payload: RegisterPayload) => Promise<void>;
   logout: () => void;
   openLoginModal: () => void;
   closeLoginModal: () => void;
@@ -71,6 +73,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const register = async (payload: RegisterPayload) => {
+    setIsLoading(true);
+    try {
+      await registerUser(payload);
+      // Automatically log in newly registered user
+      await loginUser({ email: payload.email, password: payload.password });
+      const userData = await fetchCurrentUser();
+      setUser(userData);
+      setLoginModalOpen(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const logout = () => {
     clearStoredTokens();
     setUser(null);
@@ -87,6 +103,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         loginModalOpen,
         login,
+        register,
         logout,
         openLoginModal,
         closeLoginModal,
