@@ -35,6 +35,11 @@ class ForgotPasswordRequest(BaseModel):
     email: EmailStr = Field(..., description="Registered user email address")
 
 
+class VerifyResetCodeRequest(BaseModel):
+    email: EmailStr = Field(..., description="Registered user email address")
+    code: str = Field(..., min_length=4, max_length=10, description="Verification code sent via email")
+
+
 class ResetPasswordRequest(BaseModel):
     email: EmailStr = Field(..., description="Registered user email address")
     code: str = Field(..., min_length=4, max_length=10, description="Verification code sent via email")

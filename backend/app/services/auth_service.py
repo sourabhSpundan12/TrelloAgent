@@ -26,6 +26,7 @@ from app.schemas.auth import (
     TokenResponse,
     UserLoginRequest,
     UserRegisterRequest,
+    VerifyResetCodeRequest,
 )
 from app.schemas.user import UserResponse
 from app.services.email_service import EmailService
@@ -206,40 +207,55 @@ class AuthService:
     async def request_password_reset(self, req: ForgotPasswordRequest) -> MessageResponse:
         """
         Initiate password reset flow:
-        1. Checks user existence.
+        1. Checks user existence. If not found, explicitly informs user.
         2. Generates secure 6-digit verification code.
         3. Persists code with expiry in MongoDB.
-        4. Dispatches formatted email via SMTP.
+        4. Dispatches verification code email via SMTP.
         """
         normalized_email = req.email.strip().lower()
         user = await self.user_repo.get_by_email(normalized_email)
 
-        # Always return identical response to prevent user enumeration
-        if user and user.get("is_active", True):
-            code = f"{secrets.randbelow(900000) + 100000}"
-            expires_at = datetime.now(timezone.utc) + timedelta(
-                minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES
+        if not user:
+            raise NotFoundError(
+                f"No account found with email '{normalized_email}'. Please verify your email or Sign Up."
             )
-            await self.reset_repo.create_reset_code(normalized_email, code, expires_at)
-            logger.info(f"Generated password reset verification code for: {normalized_email}")
 
-            try:
-                await self.email_service.send_password_reset_email(
-                    to_email=normalized_email,
-                    user_name=user.get("full_name", "User"),
-                    reset_code=code,
-                    expire_minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES,
-                )
-            except Exception as exc:
-                logger.error(f"Error delivering password reset email to {normalized_email}: {exc}")
-                if settings.DEBUG:
-                    logger.info(f"[DEV DEBUG NOTICE] Reset code for {normalized_email} is: {code}")
-        else:
-            logger.info(f"Password reset requested for unrecognized or inactive email: {normalized_email}")
+        if not user.get("is_active", True):
+            raise AuthenticationError("This account is currently deactivated. Please contact your administrator.")
+
+        code = f"{secrets.randbelow(900000) + 100000}"
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES
+        )
+        await self.reset_repo.create_reset_code(normalized_email, code, expires_at)
+        logger.info(f"Generated password reset verification code for: {normalized_email}")
+
+        try:
+            await self.email_service.send_password_reset_email(
+                to_email=normalized_email,
+                user_name=user.get("full_name", "User"),
+                reset_code=code,
+                expire_minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES,
+            )
+        except Exception as exc:
+            logger.error(f"Error delivering password reset email to {normalized_email}: {exc}")
+            if settings.DEBUG:
+                logger.info(f"[DEV DEBUG NOTICE] Reset code for {normalized_email} is: {code}")
+            raise AuthenticationError(
+                f"Could not send email via SMTP ({exc}). Please check your SMTP configuration in .env."
+            )
 
         return MessageResponse(
-            message="If an account exists for this email, a 6-digit verification code has been sent."
+            message=f"A 6-digit verification code has been sent to {normalized_email}."
         )
+
+    async def verify_reset_code(self, req: VerifyResetCodeRequest) -> MessageResponse:
+        """Verify the 6-digit code before presenting password entry fields."""
+        normalized_email = req.email.strip().lower()
+        is_valid = await self.reset_repo.verify_code(normalized_email, req.code)
+        if not is_valid:
+            raise AuthenticationError("Invalid or expired verification code. Please check your code or request a new one.")
+        return MessageResponse(message="Verification code is valid. You can now set your new password.")
 
     async def reset_password(self, req: ResetPasswordRequest) -> MessageResponse:
         """

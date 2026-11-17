@@ -9,6 +9,7 @@ from app.schemas.auth import (
     TokenResponse,
     UserLoginRequest,
     UserRegisterRequest,
+    VerifyResetCodeRequest,
 )
 from app.schemas.user import UserResponse
 from app.services.auth_service import AuthService
@@ -98,6 +99,20 @@ async def forgot_password(
     auth_service: AuthService = Depends(get_auth_service),
 ) -> MessageResponse:
     return await auth_service.request_password_reset(payload)
+
+
+@router.post(
+    "/verify-reset-code",
+    response_model=MessageResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Verify password reset verification code",
+    description="Checks if verification code is valid before allowing password entry.",
+)
+async def verify_reset_code(
+    payload: VerifyResetCodeRequest,
+    auth_service: AuthService = Depends(get_auth_service),
+) -> MessageResponse:
+    return await auth_service.verify_reset_code(payload)
 
 
 @router.post(

@@ -8,6 +8,7 @@ from app.schemas.auth import (
     ChangePasswordRequest,
     ForgotPasswordRequest,
     ResetPasswordRequest,
+    VerifyResetCodeRequest,
 )
 from app.services.auth_service import AuthService
 from app.services.email_service import EmailService
@@ -105,6 +106,35 @@ async def test_request_password_reset_user_found(mock_db):
 
 
 @pytest.mark.asyncio
+async def test_request_password_reset_user_not_found(mock_db):
+    from app.core.exceptions import NotFoundError
+    auth_service = AuthService(mock_db)
+    auth_service.user_repo.get_by_email = AsyncMock(return_value=None)
+
+    with pytest.raises(NotFoundError):
+        await auth_service.request_password_reset(ForgotPasswordRequest(email="nonexistent@example.com"))
+
+
+@pytest.mark.asyncio
+async def test_verify_reset_code_success(mock_db):
+    auth_service = AuthService(mock_db)
+    auth_service.reset_repo.verify_code = AsyncMock(return_value=True)
+
+    res = await auth_service.verify_reset_code(VerifyResetCodeRequest(email="test@example.com", code="123456"))
+    assert "valid" in res.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_verify_reset_code_invalid(mock_db):
+    auth_service = AuthService(mock_db)
+    auth_service.reset_repo.verify_code = AsyncMock(return_value=False)
+
+    with pytest.raises(AuthenticationError):
+        await auth_service.verify_reset_code(VerifyResetCodeRequest(email="test@example.com", code="999999"))
+
+
+
+@pytest.mark.asyncio
 async def test_reset_password_flow(mock_db):
     auth_service = AuthService(mock_db)
     auth_service.reset_repo.verify_code = AsyncMock(return_value=True)
@@ -130,6 +160,6 @@ async def test_reset_password_flow(mock_db):
 
 def test_email_service_unconfigured():
     svc = EmailService()
-    svc.user = ""
-    svc.password = ""
-    assert svc.is_configured() is False
+    with patch.object(svc, "_get_config", return_value={"user": "", "password": ""}):
+        assert svc.is_configured() is False
+

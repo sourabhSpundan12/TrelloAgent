@@ -20,11 +20,12 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/common/Button';
-import { requestForgotPassword, resetPassword } from '../services/api';
+import { requestForgotPassword, resetPassword, verifyResetCode } from '../services/api';
 
 export const AuthPage: React.FC = () => {
   const { login, register } = useAuth();
-  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot' | 'reset'>('signin');
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
+  const [forgotStep, setForgotStep] = useState<'email' | 'verify' | 'new-password'>('email');
 
   // Sign In form state - strictly empty by default (no automatic pre-fill)
   const [loginEmail, setLoginEmail] = useState('');
@@ -175,14 +176,46 @@ export const AuthPage: React.FC = () => {
 
     try {
       const res = await requestForgotPassword({ email: cleanEmail });
-      setSuccessMessage(res.message || 'Verification code sent to your email.');
-      setMode('reset');
+      setSuccessMessage(res.message || `Verification code sent to ${cleanEmail}`);
+      setForgotStep('verify');
     } catch (err: any) {
       const msg =
         err.response?.data?.error?.message ||
         err.response?.data?.detail ||
         err.message ||
         'Failed to process password reset request.';
+      setErrorMessage(msg);
+      setToastMessage(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleVerifyCodeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanEmail = forgotEmail.trim();
+    const cleanCode = resetCode.trim();
+
+    if (!cleanCode) {
+      setErrorMessage('Please enter the 6-digit verification code.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    setToastMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const res = await verifyResetCode({ email: cleanEmail, code: cleanCode });
+      setSuccessMessage(res.message || 'Verification code confirmed! Now enter your new password.');
+      setForgotStep('new-password');
+    } catch (err: any) {
+      const msg =
+        err.response?.data?.error?.message ||
+        err.response?.data?.detail ||
+        err.message ||
+        'Invalid or expired verification code. Please check your code.';
       setErrorMessage(msg);
       setToastMessage(msg);
     } finally {
@@ -227,6 +260,7 @@ export const AuthPage: React.FC = () => {
       setResetCode('');
       setResetNewPassword('');
       setResetConfirmPassword('');
+      setForgotStep('email');
       setMode('signin');
     } catch (err: any) {
       const msg =
@@ -241,8 +275,9 @@ export const AuthPage: React.FC = () => {
     }
   };
 
-  const switchMode = (newMode: 'signin' | 'signup' | 'forgot' | 'reset') => {
+  const switchMode = (newMode: 'signin' | 'signup' | 'forgot') => {
     setMode(newMode);
+    setForgotStep('email');
     setErrorMessage(null);
     setToastMessage(null);
     setSuccessMessage(null);
@@ -600,8 +635,8 @@ export const AuthPage: React.FC = () => {
             </form>
           )}
 
-          {/* FORGOT PASSWORD FORM (STEP 1: Request Code via SMTP) */}
-          {mode === 'forgot' && (
+          {/* FORGOT PASSWORD WORKFLOW (3 DISCRETE STEPS) */}
+          {mode === 'forgot' && forgotStep === 'email' && (
             <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
               <div className="space-y-1">
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">Forgot Password?</h3>
@@ -658,13 +693,13 @@ export const AuthPage: React.FC = () => {
             </form>
           )}
 
-          {/* RESET PASSWORD FORM (STEP 2: Enter Code & New Password) */}
-          {mode === 'reset' && (
-            <form onSubmit={handleResetPasswordSubmit} className="space-y-3.5">
+          {/* STEP 2: ONLY VERIFY 6-DIGIT CODE (Password fields stay hidden until code is confirmed!) */}
+          {mode === 'forgot' && forgotStep === 'verify' && (
+            <form onSubmit={handleVerifyCodeSubmit} className="space-y-4">
               <div className="space-y-1">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Verify Code & Reset Password</h3>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Enter Verification Code</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Enter the 6-digit verification code sent to <strong className="text-slate-700 dark:text-slate-200">{forgotEmail}</strong> along with your new password.
+                  Enter the 6-digit verification code sent to <strong className="text-slate-800 dark:text-slate-200">{forgotEmail}</strong>.
                 </p>
               </div>
 
@@ -681,9 +716,58 @@ export const AuthPage: React.FC = () => {
                     value={resetCode}
                     onChange={(e) => setResetCode(e.target.value)}
                     placeholder="123456"
-                    className="w-full font-mono tracking-widest text-center bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 text-sm font-bold text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/20 transition"
+                    autoFocus
+                    className="w-full font-mono tracking-widest text-center bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl py-3 text-base font-bold text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/20 transition"
                   />
                 </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full mt-2 py-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-semibold text-xs shadow-md shadow-brand-500/25 flex items-center justify-center space-x-2 transition active:scale-[0.99] disabled:opacity-50"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Verifying code...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>Verify Code</span>
+                  </>
+                )}
+              </button>
+
+              <div className="flex items-center justify-between pt-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => handleForgotPasswordSubmit({ preventDefault: () => {} } as any)}
+                  disabled={isSubmitting}
+                  className="text-brand-600 dark:text-brand-400 hover:underline"
+                >
+                  Resend code
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForgotStep('email')}
+                  className="text-slate-500 hover:text-slate-900 dark:hover:text-slate-200 transition"
+                >
+                  Change email
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* STEP 3: ONLY SHOWN ONCE CODE IS VERIFIED (User sets their new password) */}
+          {mode === 'forgot' && forgotStep === 'new-password' && (
+            <form onSubmit={handleResetPasswordSubmit} className="space-y-3.5">
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Set Your New Password</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Verification code confirmed! Choose a new secure password for <strong className="text-slate-800 dark:text-slate-200">{forgotEmail}</strong>.
+                </p>
               </div>
 
               <div className="space-y-1">
@@ -699,6 +783,7 @@ export const AuthPage: React.FC = () => {
                     value={resetNewPassword}
                     onChange={(e) => setResetNewPassword(e.target.value)}
                     placeholder="Minimum 8 characters"
+                    autoFocus
                     autoComplete="new-password"
                     className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-10 py-2.5 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/20 transition"
                   />
@@ -739,31 +824,23 @@ export const AuthPage: React.FC = () => {
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Resetting password...</span>
+                    <span>Saving new password...</span>
                   </>
                 ) : (
                   <>
                     <KeyRound className="w-4 h-4" />
-                    <span>Set New Password</span>
+                    <span>Save New Password</span>
                   </>
                 )}
               </button>
 
-              <div className="flex items-center justify-between pt-2 text-xs">
-                <button
-                  type="button"
-                  onClick={() => handleForgotPasswordSubmit({ preventDefault: () => {} } as any)}
-                  disabled={isSubmitting}
-                  className="text-brand-600 dark:text-brand-400 hover:underline"
-                >
-                  Resend code
-                </button>
+              <div className="text-center pt-2">
                 <button
                   type="button"
                   onClick={() => switchMode('signin')}
-                  className="text-slate-500 hover:text-slate-900 dark:hover:text-slate-200 transition"
+                  className="text-xs text-slate-500 hover:text-slate-900 dark:hover:text-slate-200 transition"
                 >
-                  Back to Sign In
+                  Cancel and return to Sign In
                 </button>
               </div>
             </form>

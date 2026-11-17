@@ -17,6 +17,7 @@ import {
   MCPServerRegisterPayload,
   NotificationsResponse,
   ResetPasswordPayload,
+  VerifyResetCodePayload,
 } from '../types';
 
 const api = axios.create({
@@ -156,6 +157,11 @@ export const changePassword = async (payload: ChangePasswordPayload): Promise<Au
 
 export const requestForgotPassword = async (payload: ForgotPasswordPayload): Promise<AuthMessageResponse> => {
   const response = await api.post<AuthMessageResponse>('/api/v1/auth/forgot-password', payload);
+  return response.data;
+};
+
+export const verifyResetCode = async (payload: VerifyResetCodePayload): Promise<AuthMessageResponse> => {
+  const response = await api.post<AuthMessageResponse>('/api/v1/auth/verify-reset-code', payload);
   return response.data;
 };
 

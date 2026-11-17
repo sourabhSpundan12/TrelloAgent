@@ -340,6 +340,11 @@ export interface ForgotPasswordPayload {
   email: string;
 }
 
+export interface VerifyResetCodePayload {
+  email: string;
+  code: string;
+}
+
 export interface ResetPasswordPayload {
   email: string;
   code: string;
