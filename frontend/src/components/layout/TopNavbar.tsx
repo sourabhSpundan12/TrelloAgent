@@ -205,7 +205,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ currentTab, onTabChange, o
 
       {/* Right Controls */}
       <div className="flex items-center space-x-2.5">
-        {/* Theme Toggle */}
+        {/* Theme Toggle (Light / Dark) */}
         <button
           onClick={toggleTheme}
           title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}

@@ -169,7 +169,7 @@ export const EmployeesPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Live Synchronization Telemetry Header */}
-      <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-slate-900/50 to-slate-900/80 border border-emerald-500/20 text-xs shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center space-x-3">
           <div className="relative flex items-center justify-center">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping absolute opacity-75" />
@@ -178,11 +178,11 @@ export const EmployeesPage: React.FC = () => {
           <div>
             <span className="font-bold text-slate-900 dark:text-slate-100 flex items-center space-x-2">
               <span className="text-sm">Team Workload & Collaborators</span>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-[10px] font-mono text-emerald-400 font-semibold uppercase tracking-wide">
+              <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30 text-[10px] font-mono font-semibold uppercase tracking-wide">
                 Live Trello Synced
               </span>
             </span>
-            <p className="text-[11px] text-slate-400 mt-0.5">
+            <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
               Live collaborator distribution computed directly from Trello board cards and registered accounts.
             </p>
           </div>
@@ -192,9 +192,9 @@ export const EmployeesPage: React.FC = () => {
           {unassignedCount > 0 && (
             <button
               onClick={() => setShowUnassignedModal(true)}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 transition text-xs font-medium"
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/20 transition text-xs font-semibold"
             >
-              <Inbox className="w-3.5 h-3.5" />
+              <Inbox className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
               <span>{unassignedCount} Unassigned Cards</span>
             </button>
           )}
@@ -285,9 +285,9 @@ export const EmployeesPage: React.FC = () => {
                 <MemberAvatar name={emp.name} avatarUrl={emp.avatar} size="md" />
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-[10px] text-slate-400 font-semibold">{emp.empId}</span>
-                    <Badge variant={emp.status === 'ACTIVE' ? 'success' : 'neutral'}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400 font-semibold truncate">{emp.empId}</span>
+                    <Badge variant={emp.status === 'ACTIVE' ? 'success' : 'neutral'} className="shrink-0">
                       {emp.status}
                     </Badge>
                   </div>
@@ -308,54 +308,54 @@ export const EmployeesPage: React.FC = () => {
               </div>
 
               {/* Metric Breakdown Grid - Accurately Dissects To Do vs Doing vs Review vs Done */}
-              <div className="grid grid-cols-5 gap-1.5 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 text-center">
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-medium">Total</span>
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+              <div className="grid grid-cols-5 gap-1 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 text-center overflow-hidden">
+                <div className="min-w-0">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium truncate">Total</span>
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100 block truncate">
                     {emp.assignedTasksCount}
                   </span>
                 </div>
-                <div>
-                  <span className="text-[10px] text-indigo-400 block font-medium">To Do</span>
-                  <span className="text-xs font-bold text-indigo-500 dark:text-indigo-400">
+                <div className="min-w-0">
+                  <span className="text-[10px] text-indigo-500 dark:text-indigo-400 block font-medium truncate">To Do</span>
+                  <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 block truncate">
                     {emp.todoCount || 0}
                   </span>
                 </div>
-                <div>
-                  <span className="text-[10px] text-amber-400 block font-medium">Doing</span>
-                  <span className="text-xs font-bold text-amber-500 dark:text-amber-400">
+                <div className="min-w-0">
+                  <span className="text-[10px] text-amber-500 dark:text-amber-400 block font-medium truncate">Doing</span>
+                  <span className="text-xs font-bold text-amber-600 dark:text-amber-400 block truncate">
                     {emp.inProgressCount || 0}
                   </span>
                 </div>
-                <div>
-                  <span className="text-[10px] text-purple-400 block font-medium">Review</span>
-                  <span className="text-xs font-bold text-purple-500 dark:text-purple-400">
+                <div className="min-w-0">
+                  <span className="text-[10px] text-purple-500 dark:text-purple-400 block font-medium truncate">Review</span>
+                  <span className="text-xs font-bold text-purple-600 dark:text-purple-400 block truncate">
                     {emp.inReviewCount || 0}
                   </span>
                 </div>
-                <div>
-                  <span className="text-[10px] text-emerald-400 block font-medium">Done</span>
-                  <span className="text-xs font-bold text-emerald-500 dark:text-emerald-400">
+                <div className="min-w-0">
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block font-medium truncate">Done</span>
+                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 block truncate">
                     {emp.completedCount || 0}
                   </span>
                 </div>
               </div>
 
               {/* Card Footer Action */}
-              <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
-                <span className="text-[11px] text-slate-400 flex items-center space-x-1">
-                  <UserCheck className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>
+              <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs gap-2 min-w-0">
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center space-x-1 truncate min-w-0">
+                  <UserCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  <span className="truncate">
                     {emp.assignedTasksCount > 0
-                      ? `${emp.assignedTasksCount} Trello card${emp.assignedTasksCount > 1 ? 's' : ''}`
-                      : 'No active cards'}
+                      ? `${emp.assignedTasksCount} card${emp.assignedTasksCount > 1 ? 's' : ''}`
+                      : 'No cards'}
                     {emp.overdueCount > 0 ? (
-                      <span className="text-rose-400 font-bold ml-1">({emp.overdueCount} overdue)</span>
+                      <span className="text-rose-500 font-semibold ml-1">({emp.overdueCount} overdue)</span>
                     ) : ''}
                   </span>
                 </span>
-                <span className="text-brand-500 dark:text-brand-400 font-medium group-hover:underline">
-                  View Tasks ({emp.tasks?.length || emp.assignedTasksCount}) →
+                <span className="text-brand-600 dark:text-brand-400 font-semibold hover:underline shrink-0 text-xs">
+                  View Tasks →
                 </span>
               </div>
             </Card>

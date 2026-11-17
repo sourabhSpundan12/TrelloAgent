@@ -656,7 +656,7 @@ export const AIAssistantPage: React.FC = () => {
         <button
           type="button"
           onClick={handleNewConversation}
-          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-semibold shadow-xs transition"
+          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold shadow-xs transition"
           title="New Chat"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -701,17 +701,17 @@ export const AIAssistantPage: React.FC = () => {
                 }}
                 className={`group relative flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all text-xs ${
                   isActive
-                    ? 'bg-gradient-to-r from-emerald-500/15 via-emerald-500/5 to-transparent text-emerald-400 font-medium border border-emerald-500/40 shadow-xs'
+                    ? 'bg-brand-50 dark:bg-brand-500/15 text-brand-700 dark:text-brand-300 font-semibold border border-brand-200 dark:border-brand-500/40 shadow-xs'
                     : 'hover:bg-slate-100 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-transparent'
                 }`}
               >
                 {isActive && (
-                  <div className="absolute left-0 top-2 bottom-2 w-1 bg-emerald-500 rounded-r-full"></div>
+                  <div className="absolute left-0 top-2 bottom-2 w-1 bg-brand-500 rounded-r-full"></div>
                 )}
                 <div className="flex items-center space-x-2.5 min-w-0 pr-6 pl-1">
                   <MessageSquare
                     className={`w-3.5 h-3.5 shrink-0 ${
-                      isActive ? 'text-emerald-400' : 'text-slate-400'
+                      isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'
                     }`}
                   />
                   <div className="min-w-0">
@@ -804,7 +804,7 @@ export const AIAssistantPage: React.FC = () => {
                   <span className="hidden sm:inline">Chats</span>
                 </button>
               )}
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500/20 via-teal-500/20 to-violet-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+              <div className="w-8 h-8 rounded-xl bg-brand-500/10 border border-brand-500/25 flex items-center justify-center text-brand-600 dark:text-brand-400 shrink-0">
                 <Bot className="w-4 h-4" />
               </div>
               <div className="min-w-0">
@@ -881,7 +881,7 @@ export const AIAssistantPage: React.FC = () => {
                       {/* Agent Header */}
                       <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3">
                         <div className="flex items-center space-x-2.5">
-                          <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-emerald-500/20 via-teal-500/20 to-violet-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                          <div className="w-7 h-7 rounded-xl bg-brand-500/10 border border-brand-500/25 flex items-center justify-center text-brand-600 dark:text-brand-400 shrink-0">
                             <Bot className="w-4 h-4" />
                           </div>
                           <div>
@@ -906,16 +906,16 @@ export const AIAssistantPage: React.FC = () => {
 
                       {/* Tool Selection Badge */}
                       {msg.discoveredTool && (
-                        <div className="p-3 bg-violet-500/5 border border-violet-500/20 rounded-xl space-y-1.5 text-xs">
+                        <div className="p-3 bg-violet-500/5 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/20 rounded-xl space-y-1.5 text-xs">
                           <div className="flex items-center justify-between">
-                            <span className="flex items-center space-x-1.5 font-semibold text-violet-300">
-                              <Wrench className="w-3.5 h-3.5 text-violet-400" />
+                            <span className="flex items-center space-x-1.5 font-semibold text-violet-700 dark:text-violet-300">
+                              <Wrench className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
                               <span>Tool Discovered:</span>
-                              <code className="px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 font-mono text-[11px] border border-violet-500/30">
+                              <code className="px-1.5 py-0.5 rounded bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300 font-mono text-[11px] border border-violet-200 dark:border-violet-500/30">
                                 {msg.discoveredTool.name}
                               </code>
                             </span>
-                            <span className="text-[10px] text-emerald-400 font-mono font-semibold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                            <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-mono font-semibold bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-500/20">
                               {Math.round(msg.discoveredTool.relevanceScore * 100)}% Match
                             </span>
                           </div>
@@ -937,8 +937,8 @@ export const AIAssistantPage: React.FC = () => {
                                 key={key}
                                 className="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-200/70 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-[11px] font-mono border border-slate-300/40 dark:border-slate-700/60"
                               >
-                                <span className="text-slate-400 mr-1.5">{key}:</span>
-                                <span className="text-emerald-400 font-semibold">{String(value)}</span>
+                                <span className="text-slate-500 dark:text-slate-400 mr-1.5">{key}:</span>
+                                <span className="text-emerald-700 dark:text-emerald-400 font-semibold">{String(value)}</span>
                               </span>
                             ))}
                           </div>
@@ -950,10 +950,10 @@ export const AIAssistantPage: React.FC = () => {
                         <div className="p-3.5 bg-slate-100/70 dark:bg-[#0f172a] border border-slate-200 dark:border-slate-800 rounded-xl space-y-2.5 shadow-xs">
                           <div className="flex items-center justify-between border-b border-slate-200/60 dark:border-slate-800 pb-2">
                             <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 flex items-center space-x-1.5">
-                              <ListTodo className="w-3.5 h-3.5 text-emerald-500" />
+                              <ListTodo className="w-3.5 h-3.5 text-brand-500" />
                               <span>Live Trello Cards ({msg.executionResult.cards.length})</span>
                             </span>
-                            <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                            <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-mono bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-500/20 font-semibold">
                               Synced via MCP
                             </span>
                           </div>
@@ -1013,7 +1013,7 @@ export const AIAssistantPage: React.FC = () => {
                                     href={b.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-[11px] text-emerald-400 hover:underline flex items-center space-x-1 shrink-0"
+                                    className="text-[11px] text-brand-600 dark:text-brand-400 hover:underline flex items-center space-x-1 shrink-0 font-medium"
                                   >
                                     <span>Open</span>
                                     <ExternalLink className="w-3 h-3" />
@@ -1027,20 +1027,20 @@ export const AIAssistantPage: React.FC = () => {
 
                       {/* Human-in-the-Loop Task Preview Card (The Hero Component) */}
                       {msg.approvalPreview && (
-                        <div className="p-5 bg-slate-50/80 dark:bg-[#0a0f1a] border-2 border-emerald-500/40 rounded-2xl shadow-lg space-y-4">
+                        <div className="p-5 bg-slate-50/90 dark:bg-[#0a0f1a] border-2 border-brand-500/40 rounded-2xl shadow-lg space-y-4">
                           {/* Banner Header */}
                           <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
                             <div className="flex items-center space-x-2.5">
                               {msg.approvalPreview.status === 'PENDING' ? (
-                                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
                                   <ShieldAlert className="w-4 h-4" />
                                 </div>
                               ) : msg.approvalPreview.status === 'EXECUTED' ? (
-                                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">
                                   <CheckCircle2 className="w-4 h-4" />
                                 </div>
                               ) : (
-                                <div className="p-2 rounded-xl bg-slate-500/10 text-slate-400 border border-slate-500/30">
+                                <div className="p-2 rounded-xl bg-slate-500/10 text-slate-500 dark:text-slate-400 border border-slate-500/30">
                                   <Clock className="w-4 h-4" />
                                 </div>
                               )}
@@ -1048,7 +1048,7 @@ export const AIAssistantPage: React.FC = () => {
                                 <span className="font-bold text-slate-900 dark:text-white block text-xs tracking-wide">
                                   Task Draft Preview
                                 </span>
-                                <span className="text-[10px] text-slate-400">
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400">
                                   {msg.approvalPreview.status === 'PENDING'
                                     ? 'Requires explicit user confirmation before writing to Trello'
                                     : 'Synchronized with Trello MCP backend'}
@@ -1058,8 +1058,8 @@ export const AIAssistantPage: React.FC = () => {
 
                             <div>
                               {msg.approvalPreview.status === 'EXECUTED' ? (
-                                <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center space-x-1">
-                                  <CheckCircle className="w-3 h-3 text-emerald-400" />
+                                <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/40 flex items-center space-x-1">
+                                  <CheckCircle className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                                   <span>Executed in Trello</span>
                                 </span>
                               ) : msg.approvalPreview.status === 'EXECUTING' ||
@@ -1250,7 +1250,7 @@ export const AIAssistantPage: React.FC = () => {
                                     <Calendar className="w-3 h-3 text-slate-400" />
                                     <span>Due Date</span>
                                   </span>
-                                  <span className="font-semibold text-emerald-400 truncate block mt-0.5">
+                                  <span className="font-semibold text-emerald-700 dark:text-emerald-400 truncate block mt-0.5">
                                     {formatDueDateDisplay(msg.approvalPreview.dueDate)}
                                   </span>
                                 </div>
@@ -1259,8 +1259,8 @@ export const AIAssistantPage: React.FC = () => {
                               {/* Member / Assignee if specified */}
                               {msg.approvalPreview.parameters?.member_name && (
                                 <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
-                                  <span className="text-[10px] text-slate-400 uppercase font-medium flex items-center space-x-1.5 font-mono">
-                                    <User className="w-3.5 h-3.5 text-emerald-500" />
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-medium flex items-center space-x-1.5 font-mono">
+                                    <User className="w-3.5 h-3.5 text-brand-500" />
                                     <span>Assigned Member</span>
                                   </span>
                                   <span className="font-semibold text-slate-800 dark:text-slate-200">
@@ -1273,9 +1273,9 @@ export const AIAssistantPage: React.FC = () => {
 
                           {/* Post-execution success link */}
                           {msg.approvalPreview.status === 'EXECUTED' && (
-                            <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl space-y-2">
-                              <div className="flex items-center space-x-2 text-emerald-300 font-semibold text-xs">
-                                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                            <div className="p-3 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 rounded-xl space-y-2">
+                              <div className="flex items-center space-x-2 text-emerald-800 dark:text-emerald-300 font-semibold text-xs">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                                 <span>Action Executed Successfully via Trello MCP!</span>
                               </div>
                               {msg.approvalPreview.cardUrl ? (
@@ -1291,7 +1291,7 @@ export const AIAssistantPage: React.FC = () => {
                                   </a>
                                 </div>
                               ) : (
-                                <p className="text-[11px] text-emerald-400/80 font-mono">
+                                <p className="text-[11px] text-emerald-700 dark:text-emerald-400/80 font-mono">
                                   Target ID: {msg.approvalPreview.cardId || 'updated'}
                                 </p>
                               )}

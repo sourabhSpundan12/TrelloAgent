@@ -39,26 +39,30 @@ export const StatCard: React.FC<StatCardProps> = ({
       hoverable={!!onClick}
       className="p-5 flex flex-col justify-between"
     >
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 tracking-wide uppercase">
+      <div className="flex items-start justify-between gap-2 min-w-0">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 tracking-wide uppercase truncate">
             {title}
           </p>
-          <h4 className="text-2xl font-bold text-slate-900 dark:text-white mt-1.5 tracking-tight">
+          <h4 className="text-2xl font-bold text-slate-900 dark:text-white mt-1.5 tracking-tight truncate">
             {value}
           </h4>
         </div>
-        <div className={`p-2.5 rounded-xl border ${colorMap}`}>
+        <div className={`p-2.5 rounded-xl border shrink-0 ${colorMap}`}>
           <Icon className="w-5 h-5" />
         </div>
       </div>
 
       {(subtitle || trend) && (
-        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
-          {subtitle && <span className="text-slate-500 dark:text-slate-400">{subtitle}</span>}
+        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs gap-2 min-w-0">
+          {subtitle && (
+            <span className="text-slate-500 dark:text-slate-400 truncate min-w-0" title={subtitle}>
+              {subtitle}
+            </span>
+          )}
           {trend && (
             <span
-              className={`inline-flex items-center space-x-1 font-medium ${
+              className={`inline-flex items-center space-x-1 font-medium shrink-0 ${
                 trend.isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
               }`}
             >

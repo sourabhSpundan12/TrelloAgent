@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
-type Theme = 'light' | 'dark';
+export type Theme = 'light' | 'dark';
 
 interface ThemeContextType {
   theme: Theme;
@@ -16,8 +16,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (saved === 'dark' || saved === 'light') {
       return saved;
     }
-    // Default theme is light per requirements
-    return 'light';
+    return 'dark';
   });
 
   useEffect(() => {
