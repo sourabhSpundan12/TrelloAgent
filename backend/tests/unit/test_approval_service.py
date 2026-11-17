@@ -327,3 +327,36 @@ async def test_cancel_action(mock_db):
     with pytest.raises(ApprovalAlreadyProcessedError):
         await service.cancel_action(created.action_id, user_id="user_123", user_role="EMPLOYEE")
 
+
+def test_generate_related_description_cleans_prompt_echo():
+    # Prompt echo should be discarded in favor of rich domain description
+    desc = ApprovalService._generate_related_description(
+        title="backend",
+        command="create a card backend by thursday add member",
+        raw_desc="Create backend card with due date Thursday and assigned to sourabh mishra.",
+    )
+    assert "backend architecture" in desc.lower() or "api endpoints" in desc.lower()
+    assert "sourabh mishra" not in desc.lower()
+    assert "create backend card with due date" not in desc.lower()
+
+
+def test_generate_related_description_categories():
+    frontend_desc = ApprovalService._generate_related_description("UI Redesign", "create card UI Redesign")
+    assert "user interface" in frontend_desc.lower() or "client-side" in frontend_desc.lower()
+
+    auth_desc = ApprovalService._generate_related_description("Login Auth", "create card Login Auth")
+    assert "authentication" in auth_desc.lower() or "token" in auth_desc.lower()
+
+    db_desc = ApprovalService._generate_related_description("MongoDB Schema", "create card MongoDB Schema")
+    assert "data models" in db_desc.lower() or "persistence" in db_desc.lower()
+
+
+def test_generate_related_description_preserves_custom_notes():
+    custom_desc = "Special note: ensure backward compatibility with v1 API clients."
+    desc = ApprovalService._generate_related_description(
+        title="v2 Release",
+        command='create card v2 Release with description "Special note: ensure backward compatibility with v1 API clients."',
+        raw_desc=custom_desc,
+    )
+    assert desc == custom_desc
+

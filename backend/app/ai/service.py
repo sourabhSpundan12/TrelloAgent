@@ -8,6 +8,7 @@ from app.ai.llm_provider import BaseLLMProvider, LLMConfigurationError, LLMExecu
 from app.ai.provider_factory import LLMProviderFactory
 from app.ai.prompts import build_interpretation_prompt
 from app.ai.schemas import GeminiIntentOutput
+from app.approvals.service import ApprovalService
 from app.core.exceptions import PIIMaskingError
 from app.core.logging import logger
 from app.privacy.service import PIIService
@@ -547,7 +548,7 @@ class AIService:
                 card_name = card_name[0].upper() + card_name[1:] if len(card_name) > 1 else card_name.upper()
 
             tool_id = match_tool_id("trello_create_card") or (discovered_tools[0].tool.tool_id if discovered_tools else None)
-            desc = cmd_additional_desc or f"Implement and complete deliverables for '{card_name}'. Ensure functional requirements, quality verification, and testing standards are met."
+            desc = ApprovalService._generate_related_description(card_name, command, cmd_additional_desc)
 
             parameters: Dict[str, Any] = {
                 "name": card_name,
