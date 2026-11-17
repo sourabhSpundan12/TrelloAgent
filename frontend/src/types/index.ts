@@ -331,6 +331,26 @@ export interface RegisterPayload {
   role?: string;
 }
 
+export interface ChangePasswordPayload {
+  current_password: string;
+  new_password: string;
+}
+
+export interface ForgotPasswordPayload {
+  email: string;
+}
+
+export interface ResetPasswordPayload {
+  email: string;
+  code: string;
+  new_password: string;
+}
+
+export interface AuthMessageResponse {
+  message: string;
+  success?: boolean;
+}
+
 // Real-Time Notification Types
 export interface NotificationItem {
   id: string;

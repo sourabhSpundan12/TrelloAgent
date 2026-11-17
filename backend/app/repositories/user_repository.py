@@ -102,3 +102,45 @@ class RefreshTokenRepository:
         )
         return res.modified_count
 
+
+class PasswordResetRepository:
+    def __init__(self, db: AsyncIOMotorDatabase):
+        self.collection = db["password_resets"]
+
+    async def create_reset_code(self, email: str, code: str, expires_at: datetime) -> None:
+        """Invalidates older active codes for this email and stores a fresh code."""
+        normalized = email.strip().lower()
+        now = datetime.now(timezone.utc)
+        await self.collection.update_many(
+            {"email": normalized, "is_used": False},
+            {"$set": {"is_used": True, "invalidated_at": now}},
+        )
+        await self.collection.insert_one({
+            "email": normalized,
+            "code": code.strip(),
+            "expires_at": expires_at,
+            "is_used": False,
+            "created_at": now,
+        })
+
+    async def verify_code(self, email: str, code: str) -> bool:
+        """Verifies if code exists, is unused, and has not expired."""
+        normalized = email.strip().lower()
+        now = datetime.now(timezone.utc)
+        record = await self.collection.find_one({
+            "email": normalized,
+            "code": code.strip(),
+            "is_used": False,
+            "expires_at": {"$gt": now},
+        })
+        return record is not None
+
+    async def mark_used(self, email: str, code: str) -> None:
+        """Marks reset code as consumed."""
+        normalized = email.strip().lower()
+        await self.collection.update_one(
+            {"email": normalized, "code": code.strip()},
+            {"$set": {"is_used": True, "used_at": datetime.now(timezone.utc)}},
+        )
+
+

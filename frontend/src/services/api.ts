@@ -3,16 +3,20 @@ import {
   AIInterpretResponse,
   ApprovalConfirmResult,
   ApprovalEditPayload,
+  AuthMessageResponse,
   AuthTokenResponse,
   AuthUser,
   Board,
+  ChangePasswordPayload,
   ChatSession,
+  ForgotPasswordPayload,
   HealthResponse,
   LoginCredentials,
   MCPDiscoveryResult,
   MCPServer,
   MCPServerRegisterPayload,
   NotificationsResponse,
+  ResetPasswordPayload,
 } from '../types';
 
 const api = axios.create({
@@ -142,6 +146,21 @@ export const fetchCurrentUser = async (): Promise<AuthUser> => {
 
 export const registerUser = async (payload: any): Promise<AuthUser> => {
   const response = await api.post<AuthUser>('/api/v1/auth/register', payload);
+  return response.data;
+};
+
+export const changePassword = async (payload: ChangePasswordPayload): Promise<AuthMessageResponse> => {
+  const response = await api.post<AuthMessageResponse>('/api/v1/auth/change-password', payload);
+  return response.data;
+};
+
+export const requestForgotPassword = async (payload: ForgotPasswordPayload): Promise<AuthMessageResponse> => {
+  const response = await api.post<AuthMessageResponse>('/api/v1/auth/forgot-password', payload);
+  return response.data;
+};
+
+export const resetPassword = async (payload: ResetPasswordPayload): Promise<AuthMessageResponse> => {
+  const response = await api.post<AuthMessageResponse>('/api/v1/auth/reset-password', payload);
   return response.data;
 };
 
