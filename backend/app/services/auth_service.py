@@ -46,13 +46,13 @@ class AuthService:
         user = await self.user_repo.get_by_email(req.email)
         if not user:
             # Safe authentication error response (timing and identity safe)
-            raise AuthenticationError("Invalid email or password.")
+            raise AuthenticationError("Email and password is incorrect.")
 
         if not user.get("is_active", True):
             raise AuthenticationError("User account is inactive. Please contact an administrator.")
 
         if not verify_password(req.password, user["hashed_password"]):
-            raise AuthenticationError("Invalid email or password.")
+            raise AuthenticationError("Email and password is incorrect.")
 
         # Generate access token
         access_token = create_access_token(

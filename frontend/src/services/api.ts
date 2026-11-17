@@ -116,7 +116,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const isLoginRequest = error.config?.url?.includes('/auth/login');
+    if (error.response?.status === 401 && !isLoginRequest) {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('atm:auth-expired', { detail: error.response?.data }));
       }

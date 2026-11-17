@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Lock,
   Mail,
@@ -13,13 +13,14 @@ import {
   Zap,
   ArrowRight,
   Loader2,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/common/Button';
 
 export const AuthPage: React.FC = () => {
   const { login, register } = useAuth();
-  const [mode, setMode] = useState<'signin' | 'register'>('signin');
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
 
   // Sign In form state - strictly empty by default (no automatic pre-fill)
   const [loginEmail, setLoginEmail] = useState('');
@@ -27,7 +28,7 @@ export const AuthPage: React.FC = () => {
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
-  // Register form state - strictly empty by default
+  // Sign Up form state - strictly empty by default
   const [regFullName, setRegFullName] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regDepartment, setRegDepartment] = useState('Engineering');
@@ -38,29 +39,59 @@ export const AuthPage: React.FC = () => {
   // Status and feedback
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Auto-dismiss floating error toast after 5 seconds
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => {
+      setToastMessage(null);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanEmail = loginEmail.trim();
     if (!cleanEmail || !loginPassword) {
-      setErrorMessage('Please enter both email and password.');
+      const msg = 'Please enter both email and password.';
+      setErrorMessage(msg);
+      setToastMessage(msg);
       return;
     }
 
     setIsSubmitting(true);
     setErrorMessage(null);
+    setToastMessage(null);
     setSuccessMessage(null);
 
     try {
       await login({ email: cleanEmail, password: loginPassword });
     } catch (err: any) {
-      const msg =
+      const status = err.response?.status;
+      const backendMsg =
         err.response?.data?.error?.message ||
-        err.response?.data?.detail ||
-        err.message ||
-        'Authentication failed. Please verify your email and password.';
+        err.response?.data?.detail;
+
+      let msg = 'Email and password is incorrect.';
+      if (
+        status === 401 ||
+        (backendMsg &&
+          (backendMsg.toLowerCase().includes('password') ||
+            backendMsg.toLowerCase().includes('email') ||
+            backendMsg.toLowerCase().includes('authentication') ||
+            backendMsg.toLowerCase().includes('credential') ||
+            backendMsg.toLowerCase().includes('incorrect') ||
+            backendMsg.toLowerCase().includes('invalid')))
+      ) {
+        msg = 'Email and password is incorrect.';
+      } else if (backendMsg) {
+        msg = backendMsg;
+      }
+
       setErrorMessage(msg);
+      setToastMessage(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -72,22 +103,29 @@ export const AuthPage: React.FC = () => {
     const cleanEmail = regEmail.trim();
 
     if (!cleanName || !cleanEmail || !regPassword) {
-      setErrorMessage('Please fill in all required fields.');
+      const msg = 'Please fill in all required fields.';
+      setErrorMessage(msg);
+      setToastMessage(msg);
       return;
     }
 
     if (regPassword.length < 8) {
-      setErrorMessage('Password must be at least 8 characters long.');
+      const msg = 'Password must be at least 8 characters long.';
+      setErrorMessage(msg);
+      setToastMessage(msg);
       return;
     }
 
     if (regPassword !== regConfirmPassword) {
-      setErrorMessage('Passwords do not match. Please re-enter your password.');
+      const msg = 'Passwords do not match. Please re-enter your password.';
+      setErrorMessage(msg);
+      setToastMessage(msg);
       return;
     }
 
     setIsSubmitting(true);
     setErrorMessage(null);
+    setToastMessage(null);
     setSuccessMessage(null);
 
     try {
@@ -103,21 +141,39 @@ export const AuthPage: React.FC = () => {
         err.response?.data?.error?.message ||
         err.response?.data?.detail ||
         err.message ||
-        'Registration failed. That email might already be in use.';
+        'Sign up failed. That email might already be in use.';
       setErrorMessage(msg);
+      setToastMessage(msg);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const switchMode = (newMode: 'signin' | 'register') => {
+  const switchMode = (newMode: 'signin' | 'signup') => {
     setMode(newMode);
     setErrorMessage(null);
+    setToastMessage(null);
     setSuccessMessage(null);
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col justify-center items-center p-4 sm:p-6 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
+    <div className="min-h-screen w-full flex flex-col justify-center items-center p-4 sm:p-6 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors relative">
+      {/* Floating Error Toast Notification */}
+      {toastMessage && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 flex items-center space-x-3 px-4 py-3 bg-rose-600 text-white rounded-2xl shadow-2xl border border-rose-500 animate-in fade-in slide-in-from-top-4 duration-200 max-w-sm sm:max-w-md">
+          <AlertCircle className="w-5 h-5 shrink-0 text-white" />
+          <p className="text-xs sm:text-sm font-semibold tracking-wide flex-1">{toastMessage}</p>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="p-1 text-white/80 hover:text-white rounded-lg hover:bg-rose-700/50 transition"
+            aria-label="Dismiss notification"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Background Decorative Ambient Elements */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden flex items-center justify-center opacity-40 dark:opacity-25">
         <div className="w-[500px] h-[500px] bg-brand-500/20 rounded-full blur-[120px] -translate-x-1/2 -translate-y-1/4" />
@@ -155,14 +211,14 @@ export const AuthPage: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={() => switchMode('register')}
+              onClick={() => switchMode('signup')}
               className={`py-2.5 rounded-xl transition ${
-                mode === 'register'
+                mode === 'signup'
                   ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs font-bold'
                   : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              Create Account
+              Sign Up
             </button>
           </div>
 
@@ -265,16 +321,16 @@ export const AuthPage: React.FC = () => {
                   Don&apos;t have an account?{' '}
                   <button
                     type="button"
-                    onClick={() => switchMode('register')}
+                    onClick={() => switchMode('signup')}
                     className="font-semibold text-brand-600 dark:text-brand-400 hover:underline"
                   >
-                    Create account
+                    Sign Up
                   </button>
                 </p>
               </div>
             </form>
           ) : (
-            /* CREATE ACCOUNT FORM */
+            /* SIGN UP FORM */
             <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold tracking-wider text-slate-700 dark:text-slate-300 uppercase block">
@@ -386,11 +442,11 @@ export const AuthPage: React.FC = () => {
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Creating account...</span>
+                    <span>Signing up...</span>
                   </>
                 ) : (
                   <>
-                    <span>Create Account</span>
+                    <span>Sign Up</span>
                     <ArrowRight className="w-4 h-4" />
                   </>
                 )}
@@ -404,7 +460,7 @@ export const AuthPage: React.FC = () => {
                     onClick={() => switchMode('signin')}
                     className="font-semibold text-brand-600 dark:text-brand-400 hover:underline"
                   >
-                    Sign in
+                    Sign In
                   </button>
                 </p>
               </div>
@@ -434,3 +490,4 @@ export const AuthPage: React.FC = () => {
     </div>
   );
 };
+
