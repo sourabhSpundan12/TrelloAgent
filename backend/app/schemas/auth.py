@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import BaseModel, EmailStr, Field
 from app.models.user import UserRole
 
@@ -29,6 +30,15 @@ class RefreshTokenRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(..., min_length=1, description="Current plaintext password")
     new_password: str = Field(..., min_length=8, max_length=128, description="New password with minimum 8 characters")
+
+
+class ChangePasswordResponse(BaseModel):
+    message: str = "Password updated successfully."
+    success: bool = True
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    token_type: str = "bearer"
+    expires_in: Optional[int] = None
 
 
 class ForgotPasswordRequest(BaseModel):

@@ -20,6 +20,7 @@ from app.repositories.user_repository import (
 )
 from app.schemas.auth import (
     ChangePasswordRequest,
+    ChangePasswordResponse,
     ForgotPasswordRequest,
     MessageResponse,
     ResetPasswordRequest,
@@ -185,24 +186,49 @@ class AuthService:
         created = await self.user_repo.create(user_doc)
         return UserResponse(**created)
 
-    async def change_password(self, user_id: str, req: ChangePasswordRequest) -> MessageResponse:
+    async def change_password(self, user_id: str, req: ChangePasswordRequest) -> ChangePasswordResponse:
         """Verify current password and update to new password with Argon2 hashing."""
         user = await self.user_repo.get_by_id(user_id)
         if not user:
             raise NotFoundError("User not found.")
 
         if not verify_password(req.current_password, user["hashed_password"]):
-            raise AuthenticationError("Current password is incorrect.")
+            raise ValidationError("Current password is incorrect.")
 
         if req.current_password == req.new_password:
             raise ValidationError("New password cannot be the same as your current password.")
 
         new_hashed = hash_password(req.new_password)
         await self.user_repo.update(user_id, {"hashed_password": new_hashed})
-        # Invalidate any other active refresh tokens
+        # Invalidate previous refresh tokens
         await self.token_repo.revoke_all_for_user(user_id)
+
+        # Issue fresh access token and refresh token so user stays signed in on this current session
+        access_token = create_access_token(
+            subject=user["id"],
+            email=user["email"],
+            role=user.get("role", UserRole.EMPLOYEE),
+        )
+        raw_refresh_token, token_hash = generate_refresh_token()
+        refresh_expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+
+        await self.token_repo.create({
+            "token_hash": token_hash,
+            "user_id": user["id"],
+            "expires_at": refresh_expires_at,
+            "is_revoked": False,
+            "created_at": datetime.now(timezone.utc),
+        })
+
         logger.info(f"Password changed successfully for user: {user.get('email')}")
-        return MessageResponse(message="Password updated successfully.")
+        return ChangePasswordResponse(
+            message="Password updated successfully.",
+            success=True,
+            access_token=access_token,
+            refresh_token=raw_refresh_token,
+            token_type="bearer",
+            expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        )
 
     async def request_password_reset(self, req: ForgotPasswordRequest) -> MessageResponse:
         """

@@ -121,8 +121,10 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const isLoginRequest = error.config?.url?.includes('/auth/login');
-    if (error.response?.status === 401 && !isLoginRequest) {
+    const isExcludedFromAuthExpired =
+      error.config?.url?.includes('/auth/login') ||
+      error.config?.url?.includes('/auth/change-password');
+    if (error.response?.status === 401 && !isExcludedFromAuthExpired) {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('atm:auth-expired', { detail: error.response?.data }));
       }
@@ -152,6 +154,9 @@ export const registerUser = async (payload: any): Promise<AuthUser> => {
 
 export const changePassword = async (payload: ChangePasswordPayload): Promise<AuthMessageResponse> => {
   const response = await api.post<AuthMessageResponse>('/api/v1/auth/change-password', payload);
+  if (response.data?.access_token) {
+    setStoredTokens(response.data.access_token, response.data.refresh_token);
+  }
   return response.data;
 };
 

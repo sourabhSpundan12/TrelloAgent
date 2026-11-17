@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, status
 from app.core.dependencies import get_auth_service, get_current_user
 from app.schemas.auth import (
     ChangePasswordRequest,
+    ChangePasswordResponse,
     ForgotPasswordRequest,
     MessageResponse,
     RefreshTokenRequest,
@@ -74,7 +75,7 @@ async def refresh_token(
 
 @router.post(
     "/change-password",
-    response_model=MessageResponse,
+    response_model=ChangePasswordResponse,
     status_code=status.HTTP_200_OK,
     summary="Change user password",
     description="Validates current password and updates to new password with Argon2 hashing.",
@@ -83,7 +84,7 @@ async def change_password(
     payload: ChangePasswordRequest,
     current_user: UserResponse = Depends(get_current_user),
     auth_service: AuthService = Depends(get_auth_service),
-) -> MessageResponse:
+) -> ChangePasswordResponse:
     return await auth_service.change_password(current_user.id, payload)
 
 

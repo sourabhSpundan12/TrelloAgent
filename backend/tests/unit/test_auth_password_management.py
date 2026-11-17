@@ -34,9 +34,11 @@ async def test_change_password_success(mock_db):
         "id": "user-1",
         "email": "user@example.com",
         "hashed_password": old_hashed,
+        "role": "EMPLOYEE",
     })
     auth_service.user_repo.update = AsyncMock(return_value={})
     auth_service.token_repo.revoke_all_for_user = AsyncMock(return_value=1)
+    auth_service.token_repo.create = AsyncMock(return_value={})
 
     req = ChangePasswordRequest(
         current_password="OldPassword123!",
@@ -44,7 +46,10 @@ async def test_change_password_success(mock_db):
     )
     res = await auth_service.change_password("user-1", req)
     assert res.message == "Password updated successfully."
+    assert res.access_token is not None
+    assert res.refresh_token is not None
     assert auth_service.user_repo.update.called
+    assert auth_service.token_repo.create.called
 
 
 @pytest.mark.asyncio
@@ -63,8 +68,9 @@ async def test_change_password_incorrect_current(mock_db):
         current_password="WrongPassword123!",
         new_password="BrandNewPassword123!",
     )
-    with pytest.raises(AuthenticationError):
+    with pytest.raises(ValidationError) as exc_info:
         await auth_service.change_password("user-1", req)
+    assert "Current password is incorrect." in str(exc_info.value)
 
 
 @pytest.mark.asyncio

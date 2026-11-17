@@ -354,6 +354,10 @@ export interface ResetPasswordPayload {
 export interface AuthMessageResponse {
   message: string;
   success?: boolean;
+  access_token?: string;
+  refresh_token?: string;
+  token_type?: string;
+  expires_in?: number;
 }
 
 // Real-Time Notification Types

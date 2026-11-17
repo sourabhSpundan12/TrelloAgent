@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   User,
   Sliders,
@@ -13,6 +13,7 @@ import {
   KeyRound,
   ShieldCheck,
   Loader2,
+  X,
 } from 'lucide-react';
 import { Card, CardHeader, CardContent } from '../components/common/Card';
 import { Button } from '../components/common/Button';
@@ -37,32 +38,62 @@ export const SettingsPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [changeError, setChangeError] = useState<string | null>(null);
   const [changeSuccess, setChangeSuccess] = useState<string | null>(null);
+  const [toastError, setToastError] = useState<string | null>(null);
+  const [toastSuccess, setToastSuccess] = useState<string | null>(null);
+
+  // Auto-dismiss floating error and success toasts after 5 seconds
+  useEffect(() => {
+    if (!toastError) return;
+    const timer = setTimeout(() => {
+      setToastError(null);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [toastError]);
+
+  useEffect(() => {
+    if (!toastSuccess) return;
+    const timer = setTimeout(() => {
+      setToastSuccess(null);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [toastSuccess]);
 
   const handleChangePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setChangeError(null);
     setChangeSuccess(null);
+    setToastError(null);
+    setToastSuccess(null);
 
     if (!currentPassword || !newPassword || !confirmPassword) {
-      setChangeError('Please fill in all password fields.');
+      const msg = 'Please fill in all password fields.';
+      setChangeError(msg);
+      setToastError(msg);
       return;
     }
 
     if (newPassword.length < 8) {
-      setChangeError('New password must be at least 8 characters long.');
+      const msg = 'New password must be at least 8 characters long.';
+      setChangeError(msg);
+      setToastError(msg);
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setChangeError('New password and confirm password do not match.');
+      const msg = 'New password and confirm password do not match.';
+      setChangeError(msg);
+      setToastError(msg);
       return;
     }
 
     if (currentPassword === newPassword) {
-      setChangeError('New password cannot be the same as your current password.');
+      const msg = 'New password cannot be the same as your current password.';
+      setChangeError(msg);
+      setToastError(msg);
       return;
     }
 
@@ -72,7 +103,9 @@ export const SettingsPage: React.FC = () => {
         current_password: currentPassword,
         new_password: newPassword,
       });
-      setChangeSuccess(res.message || 'Password updated successfully!');
+      const successMsg = res.message || 'Password updated successfully!';
+      setChangeSuccess(successMsg);
+      setToastSuccess(successMsg);
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
@@ -81,15 +114,47 @@ export const SettingsPage: React.FC = () => {
         err.response?.data?.error?.message ||
         err.response?.data?.detail ||
         err.message ||
-        'Failed to change password. Please verify your current password.';
+        'Current password is incorrect.';
       setChangeError(msg);
+      setToastError(msg);
     } finally {
       setIsChangingPassword(false);
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {/* Floating Error Toast Notification Popup */}
+      {toastError && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 flex items-center space-x-3 px-4 py-3 bg-rose-600 text-white rounded-2xl shadow-2xl border border-rose-500 animate-in fade-in slide-in-from-top-4 duration-200 max-w-sm sm:max-w-md">
+          <AlertCircle className="w-5 h-5 shrink-0 text-white" />
+          <p className="text-xs sm:text-sm font-semibold tracking-wide flex-1">{toastError}</p>
+          <button
+            type="button"
+            onClick={() => setToastError(null)}
+            className="p-1 text-white/80 hover:text-white rounded-lg hover:bg-rose-700/50 transition"
+            aria-label="Dismiss notification"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Floating Success Toast Notification Popup */}
+      {toastSuccess && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 flex items-center space-x-3 px-4 py-3 bg-emerald-600 text-white rounded-2xl shadow-2xl border border-emerald-500 animate-in fade-in slide-in-from-top-4 duration-200 max-w-sm sm:max-w-md">
+          <CheckCircle2 className="w-5 h-5 shrink-0 text-white" />
+          <p className="text-xs sm:text-sm font-semibold tracking-wide flex-1">{toastSuccess}</p>
+          <button
+            type="button"
+            onClick={() => setToastSuccess(null)}
+            className="p-1 text-white/80 hover:text-white rounded-lg hover:bg-emerald-700/50 transition"
+            aria-label="Dismiss notification"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       <div className="flex flex-col lg:flex-row gap-6">
         {/* Left Subnav Tabs */}
         <Card className="w-full lg:w-64 p-3 shrink-0 h-fit space-y-1">
@@ -280,13 +345,21 @@ export const SettingsPage: React.FC = () => {
                     <div className="relative flex items-center">
                       <Lock className="w-4 h-4 text-slate-400 absolute left-3" />
                       <input
-                        type={showNewPassword ? 'text' : 'password'}
+                        type={showConfirmPassword ? 'text' : 'password'}
                         required
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         placeholder="Re-type your new password"
-                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-3 py-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/20"
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-10 py-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/20"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
+                        tabIndex={-1}
+                      >
+                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
                     </div>
                   </div>
 
