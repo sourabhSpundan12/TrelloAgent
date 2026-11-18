@@ -29,13 +29,14 @@ class LLMProviderFactory:
         cls,
         provider_type: Optional[str] = None,
         config: Optional[ProviderConfig] = None,
+        model_name: Optional[str] = None,
     ) -> BaseLLMProvider:
         """
         Creates an LLM provider instance based on provider name or configuration.
         Defaults to current environment configuration if arguments are omitted.
         """
         if config is None:
-            config = ProviderConfig.from_settings(provider_type)
+            config = ProviderConfig.from_settings(provider_type, model_name=model_name)
 
         provider_cls = cls._REGISTRY.get(config.provider)
         if not provider_cls:

@@ -55,11 +55,18 @@ export const ReportsPage: React.FC = () => {
       {/* Control Filter Bar */}
       <Card className="p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-            Sprint Workload & Card Distribution
-          </h2>
+          <div className="flex items-center space-x-2">
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+              Sprint Workload & Card Distribution
+            </h2>
+            {activeBoard && (
+              <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-mono font-semibold">
+                {activeBoard.name}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Aggregated directly from live Trello lists and card counts
+            Aggregated directly from live Trello workspace {activeBoard ? `"${activeBoard.name}"` : ''} ({activeBoardId || 'default'})
           </p>
         </div>
 

@@ -173,7 +173,54 @@ class ApprovalService:
         list_id = parameters.get("list_id")
 
         # Resolve description
-        if action_type == "CREATE_LIST":
+        is_bulk_delete = (
+            action_type == "DELETE_LIST_CARDS"
+            or parameters.get("is_bulk_delete")
+            or (action_type in ("ARCHIVE_CARD", "DELETE_CARD") and "all" in command.lower() and any(w in command.lower() for w in ["task", "tasks", "card", "cards"]))
+        )
+        if is_bulk_delete:
+            action_type = "DELETE_LIST_CARDS"
+            raw_target = str(parameters.get("list_name") or parameters.get("card_name") or parameters.get("name") or "").strip()
+            raw_target = re.sub(r"^(?:of|in|from|under)\s+", "", raw_target, flags=re.IGNORECASE).strip()
+            clean_list_name = re.sub(r"\s+(?:list|column)$", "", raw_target, flags=re.IGNORECASE).strip()
+            if not clean_list_name or clean_list_name.lower() in ("task", "tasks", "card", "cards", "all"):
+                clean_list_name = "To Do"
+
+            resolved_list_name = clean_list_name
+            resolved_list_id = list_id
+            cards_in_list = []
+            try:
+                from app.mcp_server import trello_tools
+                lists_res = await trello_tools.trello_list_lists(board_id=target_board_id)
+                board_lists = lists_res.get("lists", [])
+                norm_target = re.sub(r"[\s\-_]+", "", clean_list_name.lower())
+                matched_list = None
+                for bl in board_lists:
+                    bl_norm = re.sub(r"[\s\-_]+", "", bl.get("name", "").lower())
+                    if norm_target == bl_norm or norm_target in bl_norm or bl_norm in norm_target:
+                        matched_list = bl
+                        break
+                if matched_list:
+                    resolved_list_name = matched_list.get("name", clean_list_name)
+                    resolved_list_id = matched_list.get("id")
+                    cards_res = await trello_tools.trello_list_cards(board_id=target_board_id, list_id=resolved_list_id)
+                    cards_in_list = cards_res.get("cards", [])
+            except Exception as exc:
+                logger.debug(f"Could not load live cards for bulk delete preview: {exc}")
+
+            cards_count = len(cards_in_list)
+            card_names = [c.get("name", "Card") for c in cards_in_list]
+            card_ids = [c.get("id") for c in cards_in_list]
+
+            title = f"Delete all tasks in '{resolved_list_name}'"
+            description = (
+                f"Permanently archive / delete {cards_count} task(s) currently in '{resolved_list_name}' list from Trello board."
+                if cards_count > 0
+                else f"Permanently archive / delete tasks in '{resolved_list_name}' list from Trello board (list is currently empty)."
+            )
+            list_name = resolved_list_name
+            list_id = resolved_list_id
+        elif action_type == "CREATE_LIST":
             description = f"Create new column/list '{title}' on the board."
         elif action_type == "MOVE_CARD":
             raw_desc = parameters.get("desc") or parameters.get("description")
@@ -220,9 +267,22 @@ class ApprovalService:
             or parameters.get("date")
             or None
         )
+        if is_bulk_delete:
+            priority = "URGENT" if cards_count > 0 else "HIGH"
+            due_date = None
 
         # Build clean execution parameters
         exec_params: Dict[str, Any] = dict(parameters)
+        if is_bulk_delete:
+            exec_params["list_name"] = resolved_list_name
+            exec_params["card_name"] = resolved_list_name
+            exec_params["name"] = resolved_list_name
+            exec_params["list_id"] = resolved_list_id
+            exec_params["cards_count"] = cards_count
+            exec_params["card_names"] = card_names
+            exec_params["card_ids"] = card_ids
+            exec_params["is_bulk_delete"] = True
+            exec_params["action_type"] = "DELETE_LIST_CARDS"
         if "name" in exec_params or action_type in ("CREATE_CARD", "CREATE_LIST"):
             exec_params["name"] = title
         if action_type == "CREATE_CARD":
@@ -394,6 +454,9 @@ class ApprovalService:
         board_id_val = locked.get("draft", {}).get("board_id") or locked.get("board_id")
         if board_id_val and "board_id" not in draft_params:
             draft_params["board_id"] = board_id_val
+        due_val = locked.get("draft", {}).get("due_date") or locked.get("due_date")
+        if due_val and not draft_params.get("due_date") and not draft_params.get("due"):
+            draft_params["due_date"] = due_val
         tool_id = locked.get("tool_id")
 
         try:

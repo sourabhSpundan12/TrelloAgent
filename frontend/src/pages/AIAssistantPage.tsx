@@ -31,6 +31,7 @@ import {
   SlidersHorizontal,
   CornerDownLeft,
   X,
+  ChevronDown,
 } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
@@ -38,6 +39,45 @@ import { Badge } from '../components/common/Badge';
 import { ChatMessage, ActionApprovalPreview, ApprovalEditPayload, ChatSession } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useBoard } from '../context/BoardContext';
+
+export interface ModelOption {
+  id: string;
+  name: string;
+  provider: 'Google' | 'OpenAI';
+  tag: string;
+  description: string;
+}
+
+export const AVAILABLE_MODELS: ModelOption[] = [
+  {
+    id: 'gemini-1.5-flash',
+    name: 'Gemini 1.5 Flash',
+    provider: 'Google',
+    tag: 'Default · Fast',
+    description: 'Ultra-fast intent resolution with low latency',
+  },
+  {
+    id: 'gemini-1.5-pro',
+    name: 'Gemini 1.5 Pro',
+    provider: 'Google',
+    tag: 'Deep Reasoning',
+    description: 'Advanced reasoning for complex instructions and multi-step plans',
+  },
+  {
+    id: 'gemini-2.0-flash',
+    name: 'Gemini 2.0 Flash',
+    provider: 'Google',
+    tag: 'Next-Gen Speed',
+    description: 'Next-generation Gemini model with enhanced tool understanding',
+  },
+  {
+    id: 'gpt-4o-mini',
+    name: 'GPT-4o Mini',
+    provider: 'OpenAI',
+    tag: 'Token Optimized',
+    description: 'High efficiency OpenAI model with compact token footprint',
+  },
+];
 import {
   interpretCommand,
   confirmApproval,
@@ -93,6 +133,34 @@ export const AIAssistantPage: React.FC = () => {
     priority: 'MEDIUM',
     dueDate: '',
   });
+
+  // Model Selection State
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('atm_selected_model') || 'gemini-1.5-flash';
+    }
+    return 'gemini-1.5-flash';
+  });
+  const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+        setIsModelSelectorOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSelectModel = (modelId: string) => {
+    setSelectedModel(modelId);
+    setIsModelSelectorOpen(false);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('atm_selected_model', modelId);
+    }
+  };
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -218,6 +286,8 @@ export const AIAssistantPage: React.FC = () => {
     return {
       id: m.id || `MSG-${Date.now()}-${Math.random()}`,
       conversation_id: m.conversation_id,
+      board_id: m.board_id,
+      model_id: m.model_id,
       sender: m.sender || 'assistant',
       content: m.content || '',
       timestamp: resolvedTime,
@@ -326,7 +396,8 @@ export const AIAssistantPage: React.FC = () => {
         activeActionId || undefined,
         effectiveSessionId,
         undefined,
-        activeBoardId || undefined
+        activeBoardId || undefined,
+        selectedModel
       );
       setIsLoading(false);
 
@@ -424,6 +495,9 @@ export const AIAssistantPage: React.FC = () => {
 
       const assistantMsg: ChatMessage = {
         id: `MSG-${Date.now() + 1}`,
+        conversation_id: effectiveSessionId,
+        board_id: activeBoardId || undefined,
+        model_id: res.model_id || selectedModel,
         sender: 'assistant',
         content,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -838,6 +912,72 @@ export const AIAssistantPage: React.FC = () => {
             </div>
 
             <div className="flex items-center space-x-2">
+              {/* 4-Model Selection Dropdown */}
+              <div className="relative" ref={modelDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsModelSelectorOpen(!isModelSelectorOpen)}
+                  className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700/80 shadow-xs transition"
+                  title="Choose LLM Model"
+                >
+                  <Cpu className="w-3.5 h-3.5 text-brand-500" />
+                  <span className="hidden sm:inline font-mono text-[11px]">
+                    {AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.name || selectedModel}
+                  </span>
+                  <span className="sm:hidden font-mono text-[10px]">
+                    {AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.name.replace('Gemini ', '').replace('GPT-', '') || 'Model'}
+                  </span>
+                  <ChevronDown
+                    className={`w-3 h-3 text-slate-400 transition-transform ${
+                      isModelSelectorOpen ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                {isModelSelectorOpen && (
+                  <div className="absolute right-0 mt-1.5 w-72 bg-white dark:bg-[#0c121e] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-50 p-2 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="px-2 py-1 border-b border-slate-100 dark:border-slate-800/80 mb-1 flex items-center justify-between">
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-semibold">
+                        Select AI Model
+                      </span>
+                      <span className="text-[9px] font-mono text-emerald-500 font-medium">Guardrails Active</span>
+                    </div>
+                    {AVAILABLE_MODELS.map((m) => {
+                      const isSelected = m.id === selectedModel;
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => handleSelectModel(m.id)}
+                          className={`w-full text-left p-2 rounded-xl transition flex items-start justify-between ${
+                            isSelected
+                              ? 'bg-brand-50 dark:bg-brand-500/15 border border-brand-200 dark:border-brand-500/30'
+                              : 'hover:bg-slate-100 dark:hover:bg-slate-800/60 border border-transparent'
+                          }`}
+                        >
+                          <div className="space-y-0.5">
+                            <div className="flex items-center space-x-1.5">
+                              <span className="text-xs font-semibold text-slate-900 dark:text-slate-100">
+                                {m.name}
+                              </span>
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                                {m.tag}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
+                              {m.description}
+                            </p>
+                          </div>
+                          {isSelected && (
+                            <Check className="w-3.5 h-3.5 text-brand-600 dark:text-brand-400 shrink-0 mt-0.5 ml-2" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               {!isAuthenticated && (
                 <Button variant="primary" size="sm" onClick={openLoginModal}>
                   Sign In
@@ -893,10 +1033,21 @@ export const AIAssistantPage: React.FC = () => {
                             </span>
                           </div>
                         </div>
-                        <span className="text-[10px] text-slate-400 font-mono flex items-center space-x-1">
-                          <Clock className="w-3 h-3 text-slate-500" />
-                          <span>{msg.timestamp}</span>
-                        </span>
+                        <div className="flex items-center space-x-2">
+                          {msg.model_id && (
+                            <span
+                              title={`Generated with model: ${msg.model_id}`}
+                              className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-brand-500/10 text-brand-600 dark:text-brand-400 border border-brand-500/20"
+                            >
+                              <Cpu className="w-2.5 h-2.5 mr-1" />
+                              {AVAILABLE_MODELS.find((m) => m.id === msg.model_id)?.name || msg.model_id}
+                            </span>
+                          )}
+                          <span className="text-[10px] text-slate-400 font-mono flex items-center space-x-1">
+                            <Clock className="w-3 h-3 text-slate-500" />
+                            <span>{msg.timestamp}</span>
+                          </span>
+                        </div>
                       </div>
 
                       {/* Main Message Content */}
@@ -967,15 +1118,32 @@ export const AIAssistantPage: React.FC = () => {
                                   className="p-2.5 rounded-lg bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs hover:bg-slate-50 dark:hover:bg-slate-800/80 transition"
                                 >
                                   <div className="min-w-0 pr-2">
-                                    <span className="font-semibold text-slate-800 dark:text-slate-100 block truncate">
-                                      {card.name || card.title}
-                                    </span>
+                                    <div className="flex items-center space-x-1.5">
+                                      <span className="font-semibold text-slate-800 dark:text-slate-100 block truncate">
+                                        {card.name || card.title}
+                                      </span>
+                                      {(card.is_completed || (card.list_name && ((card.list_name.toLowerCase().includes('done') || card.list_name.toLowerCase().includes('completed'))))) ? (
+                                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0">
+                                          Completed
+                                        </span>
+                                      ) : (
+                                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 shrink-0">
+                                          Active
+                                        </span>
+                                      )}
+                                    </div>
                                     {card.desc && (
                                       <span className="text-[10px] text-slate-500 dark:text-slate-400 block truncate">{card.desc}</span>
                                     )}
                                   </div>
                                   <div className="flex items-center space-x-2 shrink-0 self-end sm:self-center">
                                     <Badge variant="neutral">{card.list_name || 'Card'}</Badge>
+                                    {card.due && (
+                                      <span className="text-[10px] font-mono text-slate-400 flex items-center space-x-1">
+                                        <Calendar className="w-2.5 h-2.5" />
+                                        <span>{new Date(card.due).toLocaleDateString()}</span>
+                                      </span>
+                                    )}
                                     {card.url && (
                                       <a
                                         href={card.url}
@@ -1026,351 +1194,476 @@ export const AIAssistantPage: React.FC = () => {
                       )}
 
                       {/* Human-in-the-Loop Task Preview Card (The Hero Component) */}
-                      {msg.approvalPreview && (
-                        <div className="p-5 bg-slate-50/90 dark:bg-[#0a0f1a] border-2 border-brand-500/40 rounded-2xl shadow-lg space-y-4">
-                          {/* Banner Header */}
-                          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-                            <div className="flex items-center space-x-2.5">
-                              {msg.approvalPreview.status === 'PENDING' ? (
-                                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                                  <ShieldAlert className="w-4 h-4" />
+                      {msg.approvalPreview && (() => {
+                        const isBulkDelete =
+                          msg.approvalPreview.actionType === 'DELETE_LIST_CARDS' ||
+                          Boolean(msg.approvalPreview.parameters?.is_bulk_delete) ||
+                          (msg.approvalPreview.actionType === 'ARCHIVE_CARD' && Boolean(msg.approvalPreview.parameters?.is_bulk_delete));
+
+                        const targetListName =
+                          msg.approvalPreview.parameters?.list_name ||
+                          msg.approvalPreview.listName ||
+                          'To Do';
+
+                        const rawCardsCount = msg.approvalPreview.parameters?.cards_count;
+                        const rawCardNames: string[] = Array.isArray(msg.approvalPreview.parameters?.card_names)
+                          ? msg.approvalPreview.parameters.card_names
+                          : [];
+                        const cardsCount = typeof rawCardsCount === 'number'
+                          ? rawCardsCount
+                          : rawCardNames.length;
+
+                        return (
+                          <div className={`p-5 rounded-2xl shadow-lg space-y-4 ${
+                            isBulkDelete
+                              ? 'bg-rose-50/40 dark:bg-[#150a0f] border-2 border-rose-500/40'
+                              : 'bg-slate-50/90 dark:bg-[#0a0f1a] border-2 border-brand-500/40'
+                          }`}>
+                            {/* Banner Header */}
+                            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                              <div className="flex items-center space-x-2.5">
+                                {isBulkDelete ? (
+                                  <div className="p-2 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30">
+                                    <Trash2 className="w-4 h-4" />
+                                  </div>
+                                ) : msg.approvalPreview.status === 'PENDING' ? (
+                                  <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                                    <ShieldAlert className="w-4 h-4" />
+                                  </div>
+                                ) : msg.approvalPreview.status === 'EXECUTED' ? (
+                                  <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">
+                                    <CheckCircle2 className="w-4 h-4" />
+                                  </div>
+                                ) : (
+                                  <div className="p-2 rounded-xl bg-slate-500/10 text-slate-500 dark:text-slate-400 border border-slate-500/30">
+                                    <Clock className="w-4 h-4" />
+                                  </div>
+                                )}
+                                <div>
+                                  <span className={`font-bold block text-xs tracking-wide ${isBulkDelete ? 'text-rose-700 dark:text-rose-300' : 'text-slate-900 dark:text-white'}`}>
+                                    {isBulkDelete ? 'Bulk Task Deletion Preview' : 'Task Draft Preview'}
+                                  </span>
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                                    {isBulkDelete
+                                      ? (msg.approvalPreview.status === 'PENDING'
+                                          ? 'Confirming will permanently delete/archive these tasks from Trello'
+                                          : 'Synchronized with Trello MCP backend')
+                                      : (msg.approvalPreview.status === 'PENDING'
+                                          ? 'Requires explicit user confirmation before writing to Trello'
+                                          : 'Synchronized with Trello MCP backend')}
+                                  </span>
                                 </div>
-                              ) : msg.approvalPreview.status === 'EXECUTED' ? (
-                                <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">
-                                  <CheckCircle2 className="w-4 h-4" />
-                                </div>
-                              ) : (
-                                <div className="p-2 rounded-xl bg-slate-500/10 text-slate-500 dark:text-slate-400 border border-slate-500/30">
-                                  <Clock className="w-4 h-4" />
-                                </div>
-                              )}
+                              </div>
+
                               <div>
-                                <span className="font-bold text-slate-900 dark:text-white block text-xs tracking-wide">
-                                  Task Draft Preview
-                                </span>
-                                <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                                  {msg.approvalPreview.status === 'PENDING'
-                                    ? 'Requires explicit user confirmation before writing to Trello'
-                                    : 'Synchronized with Trello MCP backend'}
-                                </span>
+                                {msg.approvalPreview.status === 'EXECUTED' ? (
+                                  <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/40 flex items-center space-x-1">
+                                    <CheckCircle className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                    <span>{isBulkDelete ? 'Deleted in Trello' : 'Executed in Trello'}</span>
+                                  </span>
+                                ) : msg.approvalPreview.status === 'EXECUTING' ||
+                                  actionLoading[msg.approvalPreview.actionId] ? (
+                                  <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-teal-500/20 text-teal-300 border border-teal-500/40 flex items-center space-x-1 animate-pulse">
+                                    <Loader2 className="w-3 h-3 animate-spin text-teal-400" />
+                                    <span>Executing via MCP...</span>
+                                  </span>
+                                ) : msg.approvalPreview.status === 'REJECTED' ? (
+                                  <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center space-x-1">
+                                    <XCircle className="w-3 h-3 text-rose-400" />
+                                    <span>Cancelled</span>
+                                  </span>
+                                ) : msg.approvalPreview.status === 'FAILED' ? (
+                                  <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                                    Failed
+                                  </span>
+                                ) : (
+                                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border flex items-center space-x-1 animate-pulse ${
+                                    isBulkDelete
+                                      ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                      : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                  }`}>
+                                    {isBulkDelete ? <Trash2 className="w-3 h-3 text-rose-400" /> : <Clock className="w-3 h-3 text-amber-400" />}
+                                    <span>Awaiting Confirmation</span>
+                                  </span>
+                                )}
                               </div>
                             </div>
 
-                            <div>
-                              {msg.approvalPreview.status === 'EXECUTED' ? (
-                                <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/40 flex items-center space-x-1">
-                                  <CheckCircle className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                                  <span>Executed in Trello</span>
-                                </span>
-                              ) : msg.approvalPreview.status === 'EXECUTING' ||
-                                actionLoading[msg.approvalPreview.actionId] ? (
-                                <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-teal-500/20 text-teal-300 border border-teal-500/40 flex items-center space-x-1 animate-pulse">
-                                  <Loader2 className="w-3 h-3 animate-spin text-teal-400" />
-                                  <span>Executing via MCP...</span>
-                                </span>
-                              ) : msg.approvalPreview.status === 'REJECTED' ? (
-                                <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center space-x-1">
-                                  <XCircle className="w-3 h-3 text-rose-400" />
-                                  <span>Cancelled</span>
-                                </span>
-                              ) : msg.approvalPreview.status === 'FAILED' ? (
-                                <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/40">
-                                  Failed
-                                </span>
-                              ) : (
-                                <span className="px-2.5 py-1 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center space-x-1 animate-pulse">
-                                  <Clock className="w-3 h-3 text-amber-400" />
-                                  <span>Awaiting Confirmation</span>
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Editing Mode */}
-                          {editingActionId === msg.approvalPreview.actionId ? (
-                            <div className="space-y-3 bg-slate-100/70 dark:bg-[#111827] p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
-                              <div className="flex items-center justify-between">
-                                <span className="font-semibold text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
-                                  <Edit3 className="w-3.5 h-3.5 text-emerald-500" />
-                                  <span>Edit Task Draft</span>
-                                </span>
-                                <span className="text-[10px] font-mono text-slate-400">
-                                  Action ID: {msg.approvalPreview.actionId}
-                                </span>
-                              </div>
-
-                              <div className="space-y-2">
-                                <div>
-                                  <label className="text-[10px] font-medium text-slate-500 uppercase">Title</label>
-                                  <input
-                                    type="text"
-                                    value={editFormData.title}
-                                    onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
-                                    className="w-full mt-0.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100"
-                                  />
+                            {/* Editing Mode */}
+                            {editingActionId === msg.approvalPreview.actionId ? (
+                              <div className="space-y-3 bg-slate-100/70 dark:bg-[#111827] p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
+                                    <Edit3 className="w-3.5 h-3.5 text-emerald-500" />
+                                    <span>Edit Task Draft</span>
+                                  </span>
+                                  <span className="text-[10px] font-mono text-slate-400">
+                                    Action ID: {msg.approvalPreview.actionId}
+                                  </span>
                                 </div>
-                                <div>
-                                  <label className="text-[10px] font-medium text-slate-500 uppercase">Description</label>
-                                  <textarea
-                                    rows={3}
-                                    value={editFormData.description}
-                                    onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
-                                    className="w-full mt-0.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100"
-                                  />
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+
+                                <div className="space-y-2">
                                   <div>
-                                    <label className="text-[10px] font-medium text-slate-500 uppercase">List</label>
-                                    <select
-                                      value={editFormData.listName}
-                                      onChange={(e) => setEditFormData({ ...editFormData, listName: e.target.value })}
-                                      className="w-full mt-0.5 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100"
-                                    >
-                                      <option value="To Do">To Do</option>
-                                      <option value="Doing">Doing</option>
-                                      <option value="In Progress">In Progress</option>
-                                      <option value="In Review">In Review</option>
-                                      <option value="Done">Done</option>
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="text-[10px] font-medium text-slate-500 uppercase">Priority</label>
-                                    <select
-                                      value={editFormData.priority}
-                                      onChange={(e) => setEditFormData({ ...editFormData, priority: e.target.value })}
-                                      className="w-full mt-0.5 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100"
-                                    >
-                                      <option value="LOW">Low</option>
-                                      <option value="MEDIUM">Medium</option>
-                                      <option value="HIGH">High</option>
-                                      <option value="URGENT">Urgent</option>
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="text-[10px] font-medium text-slate-500 uppercase">Due Date</label>
+                                    <label className="text-[10px] font-medium text-slate-500 uppercase">Title</label>
                                     <input
                                       type="text"
-                                      placeholder="e.g. 2026-11-26"
-                                      value={editFormData.dueDate}
-                                      onChange={(e) => setEditFormData({ ...editFormData, dueDate: e.target.value })}
-                                      className="w-full mt-0.5 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100"
+                                      value={editFormData.title}
+                                      onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+                                      className="w-full mt-0.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100"
                                     />
                                   </div>
+                                  <div>
+                                    <label className="text-[10px] font-medium text-slate-500 uppercase">Description</label>
+                                    <textarea
+                                      rows={3}
+                                      value={editFormData.description}
+                                      onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                                      className="w-full mt-0.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100"
+                                    />
+                                  </div>
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <div>
+                                      <label className="text-[10px] font-medium text-slate-500 uppercase">List</label>
+                                      <select
+                                        value={editFormData.listName}
+                                        onChange={(e) => setEditFormData({ ...editFormData, listName: e.target.value })}
+                                        className="w-full mt-0.5 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100"
+                                      >
+                                        <option value="To Do">To Do</option>
+                                        <option value="Doing">Doing</option>
+                                        <option value="In Progress">In Progress</option>
+                                        <option value="In Review">In Review</option>
+                                        <option value="Done">Done</option>
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] font-medium text-slate-500 uppercase">Priority</label>
+                                      <select
+                                        value={editFormData.priority}
+                                        onChange={(e) => setEditFormData({ ...editFormData, priority: e.target.value })}
+                                        className="w-full mt-0.5 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100"
+                                      >
+                                        <option value="LOW">Low</option>
+                                        <option value="MEDIUM">Medium</option>
+                                        <option value="HIGH">High</option>
+                                        <option value="URGENT">Urgent</option>
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] font-medium text-slate-500 uppercase">Due Date</label>
+                                      <input
+                                        type="text"
+                                        placeholder="e.g. 2026-11-26"
+                                        value={editFormData.dueDate}
+                                        onChange={(e) => setEditFormData({ ...editFormData, dueDate: e.target.value })}
+                                        className="w-full mt-0.5 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex justify-end space-x-2 pt-2 border-t border-slate-200/60 dark:border-slate-800">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setEditingActionId(null)}
+                                    disabled={actionLoading[msg.approvalPreview.actionId]}
+                                  >
+                                    Cancel
+                                  </Button>
+                                  <Button
+                                    variant="primary"
+                                    size="sm"
+                                    onClick={() => handleSaveEdit(msg.approvalPreview!.actionId)}
+                                    disabled={actionLoading[msg.approvalPreview.actionId]}
+                                    icon={<Check className="w-3.5 h-3.5" />}
+                                  >
+                                    Save Draft
+                                  </Button>
                                 </div>
                               </div>
-
-                              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-200/60 dark:border-slate-800">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setEditingActionId(null)}
-                                  disabled={actionLoading[msg.approvalPreview.actionId]}
-                                >
-                                  Cancel
-                                </Button>
-                                <Button
-                                  variant="primary"
-                                  size="sm"
-                                  onClick={() => handleSaveEdit(msg.approvalPreview!.actionId)}
-                                  disabled={actionLoading[msg.approvalPreview.actionId]}
-                                  icon={<Check className="w-3.5 h-3.5" />}
-                                >
-                                  Save Draft
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
-                            /* Normal Preview Display */
-                            <div className="space-y-3">
-                              {/* Task Title & Description */}
-                              <div className="p-3.5 bg-white dark:bg-slate-900/80 rounded-xl space-y-2 border border-slate-200 dark:border-slate-800/80">
-                                <div>
-                                  <span className="text-[10px] text-slate-400 font-mono font-semibold uppercase tracking-wider block">
-                                    Task Title
-                                  </span>
-                                  <p className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
-                                    {msg.approvalPreview.cardName}
+                            ) : isBulkDelete ? (
+                              /* Bulk Delete Preview Display */
+                              <div className="space-y-3">
+                                {/* Danger Alert Box */}
+                                <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 rounded-xl space-y-1.5 border border-rose-200 dark:border-rose-900/60">
+                                  <div className="flex items-center space-x-2 text-rose-700 dark:text-rose-400 font-bold text-xs uppercase tracking-wider">
+                                    <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                                    <span>Danger: Bulk List Cleanup</span>
+                                  </div>
+                                  <p className="text-xs text-rose-900 dark:text-rose-200 leading-relaxed font-sans">
+                                    {cardsCount > 0
+                                      ? `You are about to permanently delete/archive all ${cardsCount} task(s) currently in the "${targetListName}" list.`
+                                      : `All tasks in the "${targetListName}" list will be cleared from Trello.`}
                                   </p>
                                 </div>
 
-                                <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
-                                  <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block flex items-center justify-between">
-                                    <span>Description</span>
-                                    <span className="text-[9px] text-emerald-400 font-normal">
-                                      Preview before confirm
+                                {/* Metadata HUD Grid: Board, Target List, Tasks Count */}
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                                  <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                                    <span className="text-[10px] text-slate-400 block uppercase font-medium flex items-center space-x-1 font-mono">
+                                      <Layers className="w-3 h-3 text-slate-400" />
+                                      <span>Board</span>
                                     </span>
-                                  </span>
-                                  <p className="text-xs text-slate-700 dark:text-slate-300 mt-1 leading-relaxed bg-slate-50 dark:bg-slate-950/70 p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-800/60 font-sans">
-                                    {msg.approvalPreview.description || 'No description provided.'}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {/* Metadata HUD Grid: Board, List, Priority, Due Date */}
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                                <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
-                                  <span className="text-[10px] text-slate-400 block uppercase font-medium flex items-center space-x-1 font-mono">
-                                    <Layers className="w-3 h-3 text-slate-400" />
-                                    <span>Board</span>
-                                  </span>
-                                  <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block mt-0.5">
-                                    {msg.approvalPreview.boardName}
-                                  </span>
-                                </div>
-
-                                <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
-                                  <span className="text-[10px] text-slate-400 block uppercase font-medium flex items-center space-x-1 font-mono">
-                                    <Clock className="w-3 h-3 text-slate-400" />
-                                    <span>List</span>
-                                  </span>
-                                  <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block mt-0.5">
-                                    {msg.approvalPreview.listName}
-                                  </span>
-                                </div>
-
-                                <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
-                                  <span className="text-[10px] text-slate-400 block uppercase font-medium flex items-center space-x-1 font-mono">
-                                    <Flag className="w-3 h-3 text-slate-400" />
-                                    <span>Priority</span>
-                                  </span>
-                                  <span
-                                    className={`font-semibold truncate block mt-0.5 ${
-                                      msg.approvalPreview.priority === 'HIGH' ||
-                                      msg.approvalPreview.priority === 'URGENT'
-                                        ? 'text-rose-400'
-                                        : 'text-slate-800 dark:text-slate-200'
-                                    }`}
-                                  >
-                                    {msg.approvalPreview.priority || 'MEDIUM'}
-                                  </span>
-                                </div>
-
-                                <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
-                                  <span className="text-[10px] text-slate-400 block uppercase font-medium flex items-center space-x-1 font-mono">
-                                    <Calendar className="w-3 h-3 text-slate-400" />
-                                    <span>Due Date</span>
-                                  </span>
-                                  <span className="font-semibold text-emerald-700 dark:text-emerald-400 truncate block mt-0.5">
-                                    {formatDueDateDisplay(msg.approvalPreview.dueDate)}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Member / Assignee if specified */}
-                              {msg.approvalPreview.parameters?.member_name && (
-                                <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
-                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-medium flex items-center space-x-1.5 font-mono">
-                                    <User className="w-3.5 h-3.5 text-brand-500" />
-                                    <span>Assigned Member</span>
-                                  </span>
-                                  <span className="font-semibold text-slate-800 dark:text-slate-200">
-                                    {msg.approvalPreview.parameters.member_name}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Post-execution success link */}
-                          {msg.approvalPreview.status === 'EXECUTED' && (
-                            <div className="p-3 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 rounded-xl space-y-2">
-                              <div className="flex items-center space-x-2 text-emerald-800 dark:text-emerald-300 font-semibold text-xs">
-                                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                                <span>Action Executed Successfully via Trello MCP!</span>
-                              </div>
-                              {msg.approvalPreview.cardUrl ? (
-                                <div className="pt-1">
-                                  <a
-                                    href={msg.approvalPreview.cardUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition"
-                                  >
-                                    <span>View Card in Trello</span>
-                                    <ExternalLink className="w-3.5 h-3.5" />
-                                  </a>
-                                </div>
-                              ) : (
-                                <p className="text-[11px] text-emerald-700 dark:text-emerald-400/80 font-mono">
-                                  Target ID: {msg.approvalPreview.cardId || 'updated'}
-                                </p>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Error state */}
-                          {msg.approvalPreview.status === 'FAILED' && (
-                            <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl space-y-1">
-                              <div className="flex items-center space-x-1.5 text-rose-300 font-semibold text-xs">
-                                <AlertTriangle className="w-4 h-4 text-rose-400" />
-                                <span>Execution Failed</span>
-                              </div>
-                              <p className="text-[11px] text-rose-300/80">
-                                {msg.approvalPreview.errorMessage || 'An error occurred while executing action in Trello.'}
-                              </p>
-                            </div>
-                          )}
-
-                          {/* Rejected state */}
-                          {msg.approvalPreview.status === 'REJECTED' && (
-                            <div className="p-3 bg-slate-800/60 border border-slate-700 rounded-xl flex items-center space-x-2 text-xs text-slate-400">
-                              <XCircle className="w-4 h-4 text-slate-400" />
-                              <span>Action cancelled and draft discarded.</span>
-                            </div>
-                          )}
-
-                          {/* Action Control Buttons (Only when PENDING and not in edit mode) */}
-                          {msg.approvalPreview.status === 'PENDING' &&
-                            editingActionId !== msg.approvalPreview.actionId && (
-                              <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 dark:border-slate-800">
-                                <span className="text-[10px] text-slate-400 font-mono">
-                                  ID: {msg.approvalPreview.actionId}
-                                </span>
-
-                                <div className="flex flex-wrap items-center gap-2">
-                                  {/* Cancel Button */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleActionCancel(msg.approvalPreview!.actionId)}
-                                    disabled={actionLoading[msg.approvalPreview.actionId]}
-                                    className="px-3 py-1.5 rounded-xl bg-slate-800/60 hover:bg-rose-500/15 hover:text-rose-300 text-slate-400 border border-slate-700 text-xs font-medium flex items-center space-x-1.5 transition disabled:opacity-50"
-                                  >
-                                    <XCircle className="w-3.5 h-3.5 text-rose-400" />
-                                    <span>Reject</span>
-                                  </button>
-
-                                  {/* Edit Button */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleStartEdit(msg.approvalPreview!)}
-                                    disabled={actionLoading[msg.approvalPreview.actionId]}
-                                    className="px-3 py-1.5 rounded-xl bg-slate-800/60 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium flex items-center space-x-1.5 transition disabled:opacity-50"
-                                  >
-                                    <Edit3 className="w-3.5 h-3.5 text-emerald-400" />
-                                    <span>Edit</span>
-                                  </button>
-
-                                  {/* Confirm Button */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleActionConfirm(msg.approvalPreview!.actionId)}
-                                    disabled={actionLoading[msg.approvalPreview.actionId]}
-                                    className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs shadow-md flex items-center space-x-1.5 transition disabled:opacity-50"
-                                  >
-                                    {actionLoading[msg.approvalPreview.actionId] ? (
-                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                    ) : (
-                                      <CheckCircle2 className="w-3.5 h-3.5" />
-                                    )}
-                                    <span>
-                                      {actionLoading[msg.approvalPreview.actionId] ? 'Executing...' : 'Confirm & Execute'}
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block mt-0.5">
+                                      {msg.approvalPreview.boardName}
                                     </span>
-                                  </button>
+                                  </div>
+
+                                  <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                                    <span className="text-[10px] text-slate-400 block uppercase font-medium flex items-center space-x-1 font-mono">
+                                      <Clock className="w-3 h-3 text-slate-400" />
+                                      <span>Target List</span>
+                                    </span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block mt-0.5">
+                                      {targetListName}
+                                    </span>
+                                  </div>
+
+                                  <div className="p-2.5 rounded-xl bg-rose-50/70 dark:bg-rose-950/30 border border-rose-300 dark:border-rose-900/60 col-span-2 sm:col-span-1">
+                                    <span className="text-[10px] text-rose-600 dark:text-rose-400 block uppercase font-bold flex items-center space-x-1 font-mono">
+                                      <Trash2 className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                                      <span>Tasks To Delete</span>
+                                    </span>
+                                    <span className="font-bold text-rose-700 dark:text-rose-300 text-sm block mt-0.5">
+                                      {cardsCount} Tasks
+                                    </span>
+                                  </div>
                                 </div>
+
+                                {/* Preview of task names to be deleted */}
+                                {rawCardNames.length > 0 && (
+                                  <div className="p-3 bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1.5">
+                                    <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block font-mono">
+                                      Cards to be Deleted ({rawCardNames.length})
+                                    </span>
+                                    <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pt-1">
+                                      {rawCardNames.map((name: string, i: number) => (
+                                        <span
+                                          key={i}
+                                          className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20"
+                                        >
+                                          <Trash2 className="w-2.5 h-2.5 opacity-60" />
+                                          <span className="truncate max-w-xs">{name}</span>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              /* Normal Preview Display */
+                              <div className="space-y-3">
+                                {/* Task Title & Description */}
+                                <div className="p-3.5 bg-white dark:bg-slate-900/80 rounded-xl space-y-2 border border-slate-200 dark:border-slate-800/80">
+                                  <div>
+                                    <span className="text-[10px] text-slate-400 font-mono font-semibold uppercase tracking-wider block">
+                                      Task Title
+                                    </span>
+                                    <p className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
+                                      {msg.approvalPreview.cardName}
+                                    </p>
+                                  </div>
+
+                                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                                    <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block flex items-center justify-between">
+                                      <span>Description</span>
+                                      <span className="text-[9px] text-emerald-400 font-normal">
+                                        Preview before confirm
+                                      </span>
+                                    </span>
+                                    <p className="text-xs text-slate-700 dark:text-slate-300 mt-1 leading-relaxed bg-slate-50 dark:bg-slate-950/70 p-2.5 rounded-lg border border-slate-200/60 dark:border-slate-800/60 font-sans">
+                                      {msg.approvalPreview.description || 'No description provided.'}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {/* Metadata HUD Grid: Board, List, Priority, Due Date */}
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                  <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                                    <span className="text-[10px] text-slate-400 block uppercase font-medium flex items-center space-x-1 font-mono">
+                                      <Layers className="w-3 h-3 text-slate-400" />
+                                      <span>Board</span>
+                                    </span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block mt-0.5">
+                                      {msg.approvalPreview.boardName}
+                                    </span>
+                                  </div>
+
+                                  <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                                    <span className="text-[10px] text-slate-400 block uppercase font-medium flex items-center space-x-1 font-mono">
+                                      <Clock className="w-3 h-3 text-slate-400" />
+                                      <span>List</span>
+                                    </span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200 truncate block mt-0.5">
+                                      {msg.approvalPreview.listName}
+                                    </span>
+                                  </div>
+
+                                  <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                                    <span className="text-[10px] text-slate-400 block uppercase font-medium flex items-center space-x-1 font-mono">
+                                      <Flag className="w-3 h-3 text-slate-400" />
+                                      <span>Priority</span>
+                                    </span>
+                                    <span
+                                      className={`font-semibold truncate block mt-0.5 ${
+                                        msg.approvalPreview.priority === 'HIGH' ||
+                                        msg.approvalPreview.priority === 'URGENT'
+                                          ? 'text-rose-400'
+                                          : 'text-slate-800 dark:text-slate-200'
+                                      }`}
+                                    >
+                                      {msg.approvalPreview.priority || 'MEDIUM'}
+                                    </span>
+                                  </div>
+
+                                  <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                                    <span className="text-[10px] text-slate-400 block uppercase font-medium flex items-center space-x-1 font-mono">
+                                      <Calendar className="w-3 h-3 text-slate-400" />
+                                      <span>Due Date</span>
+                                    </span>
+                                    <span className="font-semibold text-emerald-700 dark:text-emerald-400 truncate block mt-0.5">
+                                      {formatDueDateDisplay(msg.approvalPreview.dueDate)}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Member / Assignee if specified */}
+                                {msg.approvalPreview.parameters?.member_name && (
+                                  <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
+                                    <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-medium flex items-center space-x-1.5 font-mono">
+                                      <User className="w-3.5 h-3.5 text-brand-500" />
+                                      <span>Assigned Member</span>
+                                    </span>
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                      {msg.approvalPreview.parameters.member_name}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             )}
-                        </div>
-                      )}
+
+                            {/* Post-execution success link */}
+                            {msg.approvalPreview.status === 'EXECUTED' && (
+                              <div className="p-3 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 rounded-xl space-y-2">
+                                <div className="flex items-center space-x-2 text-emerald-800 dark:text-emerald-300 font-semibold text-xs">
+                                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                                  <span>
+                                    {isBulkDelete
+                                      ? `Successfully deleted all tasks from '${targetListName}' on Trello!`
+                                      : 'Action Executed Successfully via Trello MCP!'}
+                                  </span>
+                                </div>
+                                {msg.approvalPreview.cardUrl ? (
+                                  <div className="pt-1">
+                                    <a
+                                      href={msg.approvalPreview.cardUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-xs transition"
+                                    >
+                                      <span>View in Trello</span>
+                                      <ExternalLink className="w-3.5 h-3.5" />
+                                    </a>
+                                  </div>
+                                ) : (
+                                  <p className="text-[11px] text-emerald-700 dark:text-emerald-400/80 font-mono">
+                                    Target: {targetListName} ({cardsCount} tasks deleted)
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Error state */}
+                            {msg.approvalPreview.status === 'FAILED' && (
+                              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl space-y-1">
+                                <div className="flex items-center space-x-1.5 text-rose-300 font-semibold text-xs">
+                                  <AlertTriangle className="w-4 h-4 text-rose-400" />
+                                  <span>Execution Failed</span>
+                                </div>
+                                <p className="text-[11px] text-rose-300/80">
+                                  {msg.approvalPreview.errorMessage || 'An error occurred while executing action in Trello.'}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Rejected state */}
+                            {msg.approvalPreview.status === 'REJECTED' && (
+                              <div className="p-3 bg-slate-800/60 border border-slate-700 rounded-xl flex items-center space-x-2 text-xs text-slate-400">
+                                <XCircle className="w-4 h-4 text-slate-400" />
+                                <span>
+                                  {isBulkDelete
+                                    ? `Bulk deletion for "${targetListName}" cancelled. No tasks were deleted.`
+                                    : 'Action cancelled and draft discarded.'}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Action Control Buttons (Only when PENDING and not in edit mode) */}
+                            {msg.approvalPreview.status === 'PENDING' &&
+                              editingActionId !== msg.approvalPreview.actionId && (
+                                <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 dark:border-slate-800">
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    ID: {msg.approvalPreview.actionId}
+                                  </span>
+
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    {/* Reject Button */}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleActionCancel(msg.approvalPreview!.actionId)}
+                                      disabled={actionLoading[msg.approvalPreview.actionId]}
+                                      className="px-3 py-1.5 rounded-xl bg-slate-800/60 hover:bg-rose-500/15 hover:text-rose-300 text-slate-400 border border-slate-700 text-xs font-medium flex items-center space-x-1.5 transition disabled:opacity-50"
+                                    >
+                                      <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                                      <span>{isBulkDelete ? 'Reject / Cancel' : 'Reject'}</span>
+                                    </button>
+
+                                    {/* Edit Button (hidden for bulk delete) */}
+                                    {!isBulkDelete && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleStartEdit(msg.approvalPreview!)}
+                                        disabled={actionLoading[msg.approvalPreview.actionId]}
+                                        className="px-3 py-1.5 rounded-xl bg-slate-800/60 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-medium flex items-center space-x-1.5 transition disabled:opacity-50"
+                                      >
+                                        <Edit3 className="w-3.5 h-3.5 text-emerald-400" />
+                                        <span>Edit</span>
+                                      </button>
+                                    )}
+
+                                    {/* Confirm Button */}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleActionConfirm(msg.approvalPreview!.actionId)}
+                                      disabled={actionLoading[msg.approvalPreview.actionId]}
+                                      className={`px-4 py-1.5 rounded-xl text-white font-semibold text-xs shadow-md flex items-center space-x-1.5 transition disabled:opacity-50 ${
+                                        isBulkDelete
+                                          ? 'bg-gradient-to-r from-rose-600 via-rose-500 to-red-600 hover:from-rose-500 hover:to-red-500'
+                                          : 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-500 hover:to-teal-500'
+                                      }`}
+                                    >
+                                      {actionLoading[msg.approvalPreview.actionId] ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      ) : isBulkDelete ? (
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      ) : (
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                      )}
+                                      <span>
+                                        {actionLoading[msg.approvalPreview.actionId]
+                                          ? (isBulkDelete ? 'Deleting...' : 'Executing...')
+                                          : isBulkDelete
+                                          ? (cardsCount > 0 ? `Confirm & Delete (${cardsCount} Tasks)` : 'Confirm & Delete')
+                                          : 'Confirm & Execute'}
+                                      </span>
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 )}

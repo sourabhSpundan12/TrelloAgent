@@ -91,6 +91,41 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
         </div>
       </div>
 
+      {/* Active Board Information Banner */}
+      {activeBoard && (
+        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-brand-500/5 to-transparent border border-emerald-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="font-bold text-slate-900 dark:text-white">
+                  Active Board: {activeBoard.name}
+                </span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                  {activeBoard.board_id}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Showing live cards, member workloads, and mutation audits for this Trello workspace.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2 self-end sm:self-center">
+            <a
+              href={`https://trello.com/b/${activeBoard.board_id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 text-[11px] font-medium transition shadow-2xs"
+            >
+              <span>View in Trello</span>
+              <ExternalLink className="w-3 h-3 text-slate-400" />
+            </a>
+          </div>
+        </div>
+      )}
+
       {/* 6 Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <StatCard
@@ -98,7 +133,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
           value={tasks.total}
           icon={CheckSquare}
           color="slate"
-          subtitle="Configured Trello Board"
+          subtitle={activeBoard ? activeBoard.name : 'Configured Board'}
           onClick={() => onNavigate('tasks')}
         />
         <StatCard

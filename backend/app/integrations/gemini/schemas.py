@@ -36,6 +36,7 @@ class AIInterpretRequest(BaseModel):
     active_action_id: Optional[str] = None
     conversation_id: Optional[str] = None
     board_id: Optional[str] = None
+    model_id: Optional[str] = None
 
 
 class AIInterpretResponse(BaseModel):
@@ -44,6 +45,7 @@ class AIInterpretResponse(BaseModel):
     entity: str
     parameters: Dict[str, Any]
     board_id: Optional[str] = None
+    model_id: Optional[str] = None
     selected_tool_id: Optional[str] = None
     selected_tool_name: Optional[str] = None
     approval_required: bool = False

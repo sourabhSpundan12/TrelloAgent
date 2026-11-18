@@ -10,6 +10,8 @@ import {
   Calendar,
   LayoutGrid,
   List,
+  X,
+  Filter,
 } from 'lucide-react';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
@@ -29,6 +31,8 @@ export const TasksPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedList, setSelectedList] = useState<string>('ALL');
   const [viewMode, setViewMode] = useState<'board' | 'list'>('board');
+  const [fromDate, setFromDate] = useState<string>('');
+  const [toDate, setToDate] = useState<string>('');
 
   const loadTasks = async () => {
     if (!isAuthenticated) return;
@@ -64,9 +68,58 @@ export const TasksPage: React.FC = () => {
         card.list_id === selectedList ||
         card.list_name?.toLowerCase() === selectedList.toLowerCase();
 
-      return matchesSearch && matchesList;
+      // Date Range Filtering (From Date - To Date)
+      let matchesDate = true;
+      if (fromDate || toDate) {
+        let cardDate: Date | null = null;
+        if (card.due) {
+          const d = new Date(card.due);
+          if (!isNaN(d.getTime())) cardDate = d;
+        }
+        // Fallback to creation date from Trello card ID (first 8 hex characters represent UNIX timestamp)
+        if (!cardDate && card.id && card.id.length >= 8) {
+          try {
+            const ts = parseInt(card.id.substring(0, 8), 16) * 1000;
+            const d = new Date(ts);
+            if (!isNaN(d.getTime())) cardDate = d;
+          } catch {
+            cardDate = null;
+          }
+        }
+
+        if (cardDate) {
+          if (fromDate) {
+            const fromDt = new Date(fromDate);
+            fromDt.setHours(0, 0, 0, 0);
+            if (cardDate < fromDt) matchesDate = false;
+          }
+          if (toDate) {
+            const toDt = new Date(toDate);
+            toDt.setHours(23, 59, 59, 999);
+            if (cardDate > toDt) matchesDate = false;
+          }
+        } else {
+          matchesDate = false;
+        }
+      }
+
+      return matchesSearch && matchesList && matchesDate;
     });
-  }, [cards, searchQuery, selectedList]);
+  }, [cards, searchQuery, selectedList, fromDate, toDate]);
+
+  const activeCount = useMemo(() => {
+    return filteredCards.filter((c) => {
+      const ln = (c.list_name || '').toLowerCase();
+      return !ln.includes('done') && !ln.includes('completed');
+    }).length;
+  }, [filteredCards]);
+
+  const completedCount = useMemo(() => {
+    return filteredCards.filter((c) => {
+      const ln = (c.list_name || '').toLowerCase();
+      return ln.includes('done') || ln.includes('completed');
+    }).length;
+  }, [filteredCards]);
 
   return (
     <div className="space-y-6">
@@ -172,10 +225,73 @@ export const TasksPage: React.FC = () => {
               onClick={() => {
                 setSearchQuery('');
                 setSelectedList('ALL');
+                setFromDate('');
+                setToDate('');
               }}
             >
               Reset
             </Button>
+          </div>
+        </div>
+
+        {/* Date Range Filtering Strip (From Date - To Date) */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-slate-500 dark:text-slate-400 font-medium flex items-center space-x-1.5">
+              <Calendar className="w-3.5 h-3.5 text-brand-500" />
+              <span>Date Filter:</span>
+            </span>
+
+            {/* From Date */}
+            <div className="flex items-center space-x-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-xl px-2.5 py-1">
+              <span className="text-[10px] uppercase font-mono font-semibold text-slate-400">From</span>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="bg-transparent text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
+                title="Filter tasks from date"
+              />
+            </div>
+
+            {/* To Date */}
+            <div className="flex items-center space-x-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-xl px-2.5 py-1">
+              <span className="text-[10px] uppercase font-mono font-semibold text-slate-400">To</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="bg-transparent text-xs text-slate-800 dark:text-slate-200 focus:outline-none"
+                title="Filter tasks to date"
+              />
+            </div>
+
+            {(fromDate || toDate) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFromDate('');
+                  setToDate('');
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+                title="Clear date filters"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Active & Completed Counters */}
+          <div className="flex items-center space-x-2">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+              Active: {activeCount}
+            </span>
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              Completed: {completedCount}
+            </span>
+            <span className="text-[11px] font-mono text-slate-400">
+              Total: {filteredCards.length}
+            </span>
           </div>
         </div>
       </Card>
@@ -252,7 +368,18 @@ export const TasksPage: React.FC = () => {
                         )}
 
                         <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-400">
-                          <span className="font-mono">{card.id.slice(-6)}</span>
+                          <div className="flex items-center space-x-1.5">
+                            <span className="font-mono">{card.id.slice(-6)}</span>
+                            {((card.list_name || '').toLowerCase().includes('done') || (card.list_name || '').toLowerCase().includes('completed')) ? (
+                              <span className="px-1.5 py-0.2 rounded-full text-[9px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                Completed
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.2 rounded-full text-[9px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                                Active
+                              </span>
+                            )}
+                          </div>
                           {card.due ? (
                             <span className="flex items-center space-x-1 text-slate-500">
                               <Calendar className="w-3 h-3" />
@@ -278,6 +405,7 @@ export const TasksPage: React.FC = () => {
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold">
                   <th className="py-3 px-4">Card Name</th>
+                  <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Trello List</th>
                   <th className="py-3 px-4">Due Date</th>
                   <th className="py-3 px-4">Card ID</th>
@@ -285,19 +413,34 @@ export const TasksPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filteredCards.map((card) => (
-                  <tr key={card.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
-                    <td className="py-3 px-4 max-w-sm">
-                      <span className="font-medium text-slate-900 dark:text-slate-100 block truncate">
-                        {card.name}
-                      </span>
-                      {card.desc && (
-                        <span className="text-[11px] text-slate-400 block truncate">{card.desc}</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <Badge variant="neutral">{card.list_name || 'List'}</Badge>
-                    </td>
+                {filteredCards.map((card) => {
+                  const isCompleted =
+                    (card.list_name || '').toLowerCase().includes('done') ||
+                    (card.list_name || '').toLowerCase().includes('completed');
+                  return (
+                    <tr key={card.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition">
+                      <td className="py-3 px-4 max-w-sm">
+                        <span className="font-medium text-slate-900 dark:text-slate-100 block truncate">
+                          {card.name}
+                        </span>
+                        {card.desc && (
+                          <span className="text-[11px] text-slate-400 block truncate">{card.desc}</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        {isCompleted ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                            Completed
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                            Active
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <Badge variant="neutral">{card.list_name || 'List'}</Badge>
+                      </td>
                     <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">
                       {card.due ? new Date(card.due).toLocaleDateString() : '—'}
                     </td>
@@ -318,7 +461,8 @@ export const TasksPage: React.FC = () => {
                       )}
                     </td>
                   </tr>
-                ))}
+                );
+              })}
               </tbody>
             </table>
           </div>

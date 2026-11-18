@@ -193,7 +193,8 @@ export const interpretCommand = async (
   activeActionId?: string,
   conversationId?: string,
   token?: string,
-  boardId?: string
+  boardId?: string,
+  modelId?: string
 ): Promise<AIInterpretResponse> => {
   const headers = token ? getAuthHeaders(token) : undefined;
   const payload: any = { command };
@@ -205,6 +206,9 @@ export const interpretCommand = async (
   }
   if (boardId) {
     payload.board_id = boardId;
+  }
+  if (modelId) {
+    payload.model_id = modelId;
   }
   const response = await api.post<AIInterpretResponse>(
     '/api/v1/ai/interpret',

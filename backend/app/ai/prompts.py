@@ -73,7 +73,9 @@ INSTRUCTIONS:
 4. Extract parameters conforming to the selected tool's input_schema properties:
    - For listing or searching cards (e.g., 'trello_search_cards'):
      * 'list_name': If the user asks to view/show cards from a specific list or column (e.g. "show cards in the To Do list", "list cards in In-Review", "show Trello Starter Guide tasks", "show Trello Started Guide tasks", "show Today cards"), set 'list_name' to the requested list name (e.g. "To Do", "In-Review", "Doing", "Done", "Trello Starter Guide", "Today"). DO NOT put the list name in 'query'.
-     * 'query': Specific keyword search query (e.g. "OAuth", "database"). Leave empty or omit if the user is asking to show cards from a list.
+     * 'from_date': Start date in ISO format YYYY-MM-DD if the user asks to filter or view tasks within a date range (e.g. "from 2026-11-01", "from 10 Nov", "between Nov 10 and Nov 25").
+     * 'to_date': End date in ISO format YYYY-MM-DD if the user asks to filter or view tasks within a date range (e.g. "to 2026-11-20", "until 25 Nov"). Note: Always return both active and completed tasks within the range.
+     * 'query': Specific keyword search query (e.g. "OAuth", "database"). Leave empty or omit if the user is asking to show cards from a list or by date.
    - For list creation (e.g., 'trello_create_list'):
      * 'name': The name of the new column or list to create (e.g. "In-Review", "Backlog", "Testing").
    - For task creation (e.g., 'trello_create_card'):
@@ -98,8 +100,8 @@ INSTRUCTIONS:
      * 'new_due_date': Updated due date if requested.
      * 'board_name': The target board name if explicitly mentioned in the request (e.g. "My Trello Board", "mytrello board", "Agentic Task Manager").
    - For deleting or archiving tasks (e.g., 'trello_delete_card', 'trello_archive_card'):
-     * 'card_name': The title or name of the card to delete or archive (e.g. "Person 1", "Login API", "Backend"), OR the list name if the user asks to delete all tasks in a column/list (e.g. "Trello Starter Guide", "Today").
-     * 'list_name': The column or list name if deleting tasks from a specific list (e.g. "Trello Starter Guide").
+     * 'card_name': The title or name of the card to delete or archive (e.g. "Person 1", "Login API", "Backend").
+     * IMPORTANT: If the user asks to delete all tasks or clear a list/column (e.g., "delete all tasks of to do list", "delete all cards in to do", "clear to do list"): set intent to 'delete_list_cards', set 'list_name' to the cleaned list name (e.g. "To Do", "Doing", "Done"), and set 'is_bulk_delete' to true. Never include words like 'of', 'in', 'from', 'list', 'column' in the list_name.
 5. If the command is unclear or missing mandatory inputs, set requires_clarification to true.
 
 Respond strictly with a JSON object conforming to the schema.
@@ -125,7 +127,9 @@ INSTRUCTIONS:
 4. Extract parameters conforming to the selected tool's input_schema properties:
    - For listing or searching cards (e.g., 'trello_search_cards'):
      * 'list_name': If the user asks to view/show cards from a specific list or column (e.g. "show cards in the To Do list", "list cards in In-Review", "show Trello Starter Guide tasks", "show Trello Started Guide tasks", "show Today cards"), set 'list_name' to the requested list name (e.g. "To Do", "In-Review", "Doing", "Done", "Trello Starter Guide", "Today"). DO NOT put the list name in 'query'.
-     * 'query': Specific keyword search query (e.g. "OAuth", "database"). Leave empty or omit if the user is asking to show cards from a list.
+     * 'from_date': Start date in ISO format YYYY-MM-DD if the user asks to filter or view tasks within a date range (e.g. "from 2026-11-01", "from 10 Nov", "between Nov 10 and Nov 25").
+     * 'to_date': End date in ISO format YYYY-MM-DD if the user asks to filter or view tasks within a date range (e.g. "to 2026-11-20", "until 25 Nov"). Note: Always return both active and completed tasks within the range.
+     * 'query': Specific keyword search query (e.g. "OAuth", "database"). Leave empty or omit if the user is asking to show cards from a list or by date.
    - For list creation (e.g., 'trello_create_list'):
      * 'name': The name of the new column or list to create (e.g. "In-Review", "Backlog", "Testing").
    - For task creation (e.g., 'trello_create_card'):
@@ -148,8 +152,8 @@ INSTRUCTIONS:
      * 'new_due_date': Updated due date if requested.
      * 'board_name': The target board name if explicitly mentioned in the request (e.g. "My Trello Board", "mytrello board", "Agentic Task Manager").
    - For deleting or archiving tasks (e.g., 'trello_delete_card', 'trello_archive_card'):
-     * 'card_name': The title or name of the card to delete or archive (e.g. "Person 1", "Login API", "Backend"), OR the list name if the user asks to delete all tasks in a column/list (e.g. "Trello Starter Guide", "Today").
-     * 'list_name': The column or list name if deleting tasks from a specific list (e.g. "Trello Starter Guide").
+     * 'card_name': The title or name of the card to delete or archive (e.g. "Person 1", "Login API", "Backend").
+     * IMPORTANT: If the user asks to delete all tasks or clear a list/column (e.g., "delete all tasks of to do list", "delete all cards in to do", "clear to do list"): set intent to 'delete_list_cards', set 'list_name' to the cleaned list name (e.g. "To Do", "Doing", "Done"), and set 'is_bulk_delete' to true. Never include words like 'of', 'in', 'from', 'list', 'column' in the list_name.
 5. If the command is unclear or missing mandatory inputs, set requires_clarification to true.
 """),
     ])

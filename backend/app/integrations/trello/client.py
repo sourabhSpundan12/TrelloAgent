@@ -4,48 +4,102 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 
-def parse_due_date_for_trello(raw_due: Optional[str]) -> Optional[str]:
+def parse_due_date_for_trello(raw_due: Any) -> Optional[str]:
     """
-    Parses relative date strings (e.g. 'tomorrow', 'next week', 'Friday')
-    or formatted dates into a valid ISO 8601 string accepted by Trello.
+    Parses date strings (e.g. 'Nov 19, 2026', '19 Nov 2026', '2026-11-19',
+    'tomorrow', 'next week', 'Friday') or datetime objects into a valid ISO 8601
+    UTC string ('YYYY-MM-DDTHH:MM:SS.000Z') strictly accepted by Trello REST API.
     """
     if not raw_due:
         return None
-    val = str(raw_due).strip().lower()
+    if isinstance(raw_due, datetime):
+        dt = raw_due if raw_due.tzinfo else raw_due.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    val = str(raw_due).strip()
+    if not val or val.lower() in ("no due date", "none", "null", "undefined", "—", "-"):
+        return None
+
+    val_lower = val.lower()
     now = datetime.now(timezone.utc)
 
-    if val == "today":
-        return (now.replace(hour=17, minute=0, second=0, microsecond=0)).isoformat()
-    if val == "tomorrow":
-        return (now + timedelta(days=1)).replace(hour=17, minute=0, second=0, microsecond=0).isoformat()
-    if "next week" in val:
-        return (now + timedelta(days=7)).replace(hour=17, minute=0, second=0, microsecond=0).isoformat()
+    # Relative shortcuts
+    if val_lower == "today":
+        return now.replace(hour=17, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    if val_lower == "tomorrow":
+        return (now + timedelta(days=1)).replace(hour=17, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    if "day after tomorrow" in val_lower:
+        return (now + timedelta(days=2)).replace(hour=17, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    if "next week" in val_lower:
+        return (now + timedelta(days=7)).replace(hour=17, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
+    # in X days / weeks
+    m_in_days = re.search(r"in\s+(\d+)\s+days?", val_lower)
+    if m_in_days:
+        d = int(m_in_days.group(1))
+        return (now + timedelta(days=d)).replace(hour=17, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    m_in_weeks = re.search(r"in\s+(\d+)\s+weeks?", val_lower)
+    if m_in_weeks:
+        w = int(m_in_weeks.group(1))
+        return (now + timedelta(weeks=w)).replace(hour=17, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    # Day of week (e.g. Friday, next Monday)
     weekdays = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6}
     for day_name, day_num in weekdays.items():
-        if day_name in val:
+        if day_name in val_lower:
             days_ahead = (day_num - now.weekday()) % 7
             if days_ahead <= 0:
                 days_ahead += 7
-            return (now + timedelta(days=days_ahead)).replace(hour=17, minute=0, second=0, microsecond=0).isoformat()
+            return (now + timedelta(days=days_ahead)).replace(hour=17, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
-    m_iso = re.search(r"(\d{4}-\d{2}-\d{2})", val)
-    if m_iso:
-        return f"{m_iso.group(1)}T17:00:00.000Z"
+    # Clean string: strip ordinal suffixes (e.g., 19th -> 19, 1st -> 1)
+    clean_val = re.sub(r"(\d+)(?:st|nd|rd|th)\b", r"\1", val, flags=re.IGNORECASE)
+    # Remove commas and normalize spaces
+    clean_val_no_comma = clean_val.replace(",", " ")
+    clean_val_no_comma = re.sub(r"\s+", " ", clean_val_no_comma).strip()
 
-    m_slash = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})", val)
-    if m_slash:
-        p1, p2, yr = int(m_slash.group(1)), int(m_slash.group(2)), int(m_slash.group(3))
-        if p1 > 12:
-            return f"{yr:04d}-{p2:02d}-{p1:02d}T17:00:00.000Z"
-        else:
-            return f"{yr:04d}-{p1:02d}-{p2:02d}T17:00:00.000Z"
+    # Try standard strptime formats
+    formats = [
+        "%Y-%m-%d",
+        "%d-%m-%Y",
+        "%m-%d-%Y",
+        "%Y/%m/%d",
+        "%d/%m/%Y",
+        "%m/%d/%Y",
+        "%b %d %Y",
+        "%B %d %Y",
+        "%d %b %Y",
+        "%d %B %Y",
+        "%b %d",
+        "%B %d",
+        "%d %b",
+        "%d %B",
+    ]
 
+    for fmt in formats:
+        try:
+            parsed = datetime.strptime(clean_val_no_comma, fmt)
+            if parsed.year == 1900:
+                parsed = parsed.replace(year=now.year)
+                if parsed.replace(tzinfo=timezone.utc) < (now - timedelta(days=30)):
+                    parsed = parsed.replace(year=now.year + 1)
+            parsed_utc = parsed.replace(hour=17, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+            return parsed_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        except ValueError:
+            continue
+
+    # Try ISO fromisoformat
     try:
-        dt = datetime.fromisoformat(val.replace("z", "+00:00"))
-        return dt.isoformat()
+        clean_iso = val.replace("Z", "+00:00").replace("z", "+00:00")
+        dt = datetime.fromisoformat(clean_iso)
+        if not dt.tzinfo:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     except Exception:
-        return None
+        pass
+
+    return None
 from app.core.config import settings
 from app.core.logging import logger
 from app.integrations.trello.exceptions import (

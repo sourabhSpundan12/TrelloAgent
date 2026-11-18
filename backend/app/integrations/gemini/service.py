@@ -35,6 +35,7 @@ class GeminiService:
         discovered_tools: List[DiscoveredToolItem],
         conversation_history: Optional[List[Dict[str, Any]]] = None,
         correlation_id: Optional[str] = None,
+        model_id: Optional[str] = None,
     ) -> GeminiIntentOutput:
         """
         Interprets natural language command against discovered tools.
@@ -94,6 +95,7 @@ class GeminiService:
             discovered_tools,
             conversation_history=conversation_history,
             correlation_id=correlation_id,
+            model_id=model_id,
         )
 
     def _parse_and_validate(

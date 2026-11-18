@@ -8,6 +8,7 @@ from app.ai.llm_provider import BaseLLMProvider, LLMConfigurationError, LLMExecu
 from app.ai.provider_factory import LLMProviderFactory
 from app.ai.prompts import build_interpretation_prompt
 from app.ai.schemas import GeminiIntentOutput
+from app.ai.guardrails import LLMGuardrails, PromptInjectionError, GuardrailValidationError
 from app.approvals.service import ApprovalService
 from app.core.exceptions import PIIMaskingError
 from app.core.logging import logger
@@ -62,9 +63,11 @@ class AIService:
         discovered_tools: List[DiscoveredToolItem],
         conversation_history: Optional[List[Dict[str, Any]]] = None,
         correlation_id: Optional[str] = None,
+        model_id: Optional[str] = None,
     ) -> GeminiIntentOutput:
         """
         Interprets natural language command against discovered tools.
+        Enforces template-based LLM guardrails (input validation, token optimization, output safety).
         Applies PII masking before sending prompt to external LLMs.
         Locally restores masked parameters strictly within request lifecycle.
         Validates output strictly against GeminiIntentOutput schema.
@@ -74,6 +77,30 @@ class AIService:
         is_synthetic = is_synthetic_prompt(command)
         current_req_id_var.set(req_id)
         current_synthetic_var.set(is_synthetic)
+
+        # Stage 0: Template-based Input Guardrail (Prompt Injection, Policy Violations, Length Limits)
+        try:
+            LLMGuardrails.validate_input(command)
+        except PromptInjectionError as pie:
+            logger.warning(f"[{req_id}] Input Guardrail: Prompt injection blocked: {pie}")
+            return GeminiIntentOutput(
+                intent="unknown",
+                entity="general",
+                confidence=0.0,
+                requires_clarification=True,
+                clarification_message="Security assertion: Request blocked by safety guardrails due to policy violation or prompt injection pattern.",
+                parameters={},
+            )
+        except GuardrailValidationError as gve:
+            logger.warning(f"[{req_id}] Input Guardrail: Validation error: {gve}")
+            return GeminiIntentOutput(
+                intent="unknown",
+                entity="general",
+                confidence=0.0,
+                requires_clarification=True,
+                clarification_message=f"Guardrail check failed: {gve}",
+                parameters={},
+            )
 
         # Stage 1: Incoming User Prompt
         PIITerminalLogger.log_stage_1_incoming(req_id, is_synthetic=is_synthetic)
@@ -136,16 +163,43 @@ class AIService:
                     [e.entity_type for e in mask_result.detected_entities],
                 )
 
+            # 1c. Token Optimization Guardrail: Prune candidate tools and compact history footprint
+            (
+                sanitized_command,
+                discovered_tools,
+                sanitized_history,
+                token_metrics,
+            ) = LLMGuardrails.optimize_token_footprint(
+                sanitized_command,
+                discovered_tools,
+                conversation_history=sanitized_history,
+            )
+            logger.info(
+                f"[{req_id}] Guardrails token footprint: original={token_metrics['estimated_original_tokens']}, "
+                f"optimized={token_metrics['estimated_optimized_tokens']}, saved={token_metrics['savings_percentage']}%"
+            )
+
             # Build prompt for LLM provider
             prompt = build_interpretation_prompt(
                 sanitized_command, discovered_tools, conversation_history=sanitized_history
             )
 
+            # Dynamic Model Provider Selection
+            active_provider = self.provider
+            if model_id:
+                try:
+                    active_provider = LLMProviderFactory.create_provider(model_name=model_id)
+                except Exception as e:
+                    logger.warning(
+                        f"[{req_id}] Could not instantiate provider for model '{model_id}': {e}. Using default provider."
+                    )
+                    active_provider = self.provider
+
             # Stage 4: LangChain Outbound Request
             PIITerminalLogger.log_stage_4_outbound(
                 req_id=req_id,
-                provider_name=self.provider.provider_name,
-                model_name=self.provider.model_name,
+                provider_name=active_provider.provider_name,
+                model_name=active_provider.model_name,
                 has_history=has_history,
             )
 
@@ -161,15 +215,15 @@ class AIService:
                 raise PIIMaskingError("Outbound request blocked: unmasked PII detected in serialized prompt.")
 
             # LLM Invocation or Deterministic Fallback
-            if not self.provider.is_configured():
+            if not active_provider.is_configured():
                 logger.info(
-                    f"LLM provider '{self.provider.provider_name}' is not configured; using deterministic fallback interpreter."
+                    f"LLM provider '{active_provider.provider_name}' is not configured; using deterministic fallback interpreter."
                 )
                 output = self._fallback_deterministic_interpreter(sanitized_command, discovered_tools)
                 PIITerminalLogger.log_stage_6_llm_response(req_id, status_msg="deterministic local fallback")
             else:
                 try:
-                    parsed = await self.provider.generate_structured(prompt, GeminiIntentOutput)
+                    parsed = await active_provider.generate_structured(prompt, GeminiIntentOutput)
                     validated = self._validate_suggested_tool(parsed, discovered_tools)
                     PIITerminalLogger.log_stage_6_llm_response(req_id, status_msg="structured intent received")
                     output = validated
@@ -179,7 +233,7 @@ class AIService:
                     PIITerminalLogger.log_stage_6_llm_response(req_id, status_msg=f"fallback executed ({e})")
                 except Exception as e:
                     logger.warning(
-                        f"LLM call to '{self.provider.provider_name}' encountered issue ({e}); attempting deterministic fallback."
+                        f"LLM call to '{active_provider.provider_name}' encountered issue ({e}); attempting deterministic fallback."
                     )
                     output = self._fallback_deterministic_interpreter(sanitized_command, discovered_tools)
                     PIITerminalLogger.log_stage_6_llm_response(req_id, status_msg=f"fallback executed ({type(e).__name__})")
@@ -196,6 +250,9 @@ class AIService:
                 if is_terminal_logging_enabled():
                     PIITerminalLogger.log_stage_7_restoration_start(req_id, 0)
                     PIITerminalLogger.log_stage_7_restoration_complete(req_id, 0)
+
+            # Stage 7b: Output Guardrails (Anti-hallucination, Confidence Clamping, Parameter Sanitization)
+            output = LLMGuardrails.validate_output(output, discovered_tools)
 
             # Stage 8: Final Summary
             PIITerminalLogger.log_stage_8_summary(
@@ -273,8 +330,15 @@ class AIService:
         def match_tool_id(target_key: str) -> Optional[str]:
             """Helper to resolve tool ID matching either native or MCP namespaced identifier."""
             for item in discovered_tools:
-                tid = item.tool.tool_id
-                if tid == target_key or tid.endswith(f".{target_key}") or target_key in tid:
+                if hasattr(item, "tool") and hasattr(item.tool, "tool_id"):
+                    tid = item.tool.tool_id
+                elif hasattr(item, "tool_id"):
+                    tid = item.tool_id
+                elif isinstance(item, dict):
+                    tid = item.get("tool_id") or (item.get("tool", {}).get("tool_id") if isinstance(item.get("tool"), dict) else None)
+                else:
+                    tid = None
+                if tid and (tid == target_key or tid.endswith(f".{target_key}") or target_key in tid):
                     return tid
             return None
 
@@ -290,6 +354,25 @@ class AIService:
                     requires_clarification=False,
                     confidence=0.95,
                 )
+
+        # Check for date-range task filtering: "give me tasks from X to Y", "show tasks between A and B", "filter tasks from X to Y"
+        date_range_match = re.search(
+            r"(?:show|give|list|get|find|filter)\s+(?:me\s+)?(?:all\s+)?(?:active\s+and\s+completed\s+|completed\s+and\s+active\s+)?(?:tasks?|cards?)\s+(?:from|between|after)\s+([0-9\-\/a-zA-Z\s]+?)\s+(?:to|and|until)\s+([0-9\-\/a-zA-Z\s]+)",
+            command,
+            re.IGNORECASE,
+        )
+        if date_range_match:
+            tool_id = match_tool_id("trello_search_cards") or match_tool_id("trello_list_cards")
+            from_d = date_range_match.group(1).strip()
+            to_d = date_range_match.group(2).strip()
+            return GeminiIntentOutput(
+                intent="search_cards",
+                entity="card",
+                parameters={"from_date": from_d, "to_date": to_d},
+                suggested_tool_id=tool_id or "trello_search_cards",
+                requires_clarification=False,
+                confidence=0.96,
+            )
 
         # Check for listing cards: "show cards in the to do list", "show Trello Starter Guide tasks", "list cards"
         if ("card" in cmd_lower or "cards" in cmd_lower or "task" in cmd_lower or "tasks" in cmd_lower) and any(w in cmd_lower for w in ["show", "list", "view"]) and not any(w in cmd_lower for w in ["create", "add", "new", "move", "details", "inspect"]):
@@ -655,6 +738,40 @@ class AIService:
                 requires_clarification=False,
                 confidence=0.94,
             )
+
+        # Check for bulk list deletion / clearing:
+        # e.g., "delete all tasks of to do list", "delete all cards in doing", "clear to do list", "delete all tasks from to do"
+        bulk_del_match1 = re.search(
+            r"(?:delete|archive|remove|clear|trash|discard)\s+all\s+(?:the\s+)?(?:cards?|tasks?)\s+(?:of|in|from|under)?\s*(.+?)(?:\s+(?:list|column))?[\.\!]?$",
+            cmd_lower,
+            re.IGNORECASE,
+        )
+        bulk_del_match2 = re.search(
+            r"(?:delete|clear|empty|trash)\s+(?:all\s+)?(?:the\s+)?(?:cards?|tasks?\s+(?:of|in|from)\s+)?(.+?)\s+(?:list|column)(?:\s+tasks?|\s+cards?)?[\.\!]?$",
+            cmd_lower,
+            re.IGNORECASE,
+        )
+        bulk_del_active = bulk_del_match1 or bulk_del_match2
+        if bulk_del_active and any(w in cmd_lower for w in ["delete", "archive", "remove", "clear", "trash", "discard", "empty"]):
+            raw_list = bulk_del_active.group(1).strip()
+            raw_list = re.sub(r"^(?:of|in|from|under)\s+", "", raw_list, flags=re.IGNORECASE).strip()
+            raw_list = re.sub(r"\s+(?:list|column)$", "", raw_list, flags=re.IGNORECASE).strip()
+            if raw_list and raw_list not in ("card", "task"):
+                tool_id = match_tool_id("trello_delete_card") or match_tool_id("trello_archive_card") or (discovered_tools[0].tool.tool_id if discovered_tools else None)
+                return GeminiIntentOutput(
+                    intent="delete_list_cards",
+                    entity="list",
+                    parameters={
+                        "list_name": raw_list,
+                        "card_name": raw_list,
+                        "name": raw_list,
+                        "is_bulk_delete": True,
+                        "action_type": "DELETE_LIST_CARDS",
+                    },
+                    suggested_tool_id=tool_id,
+                    requires_clarification=False,
+                    confidence=0.98,
+                )
 
         # Check for card deletion / archiving: "delete card <name>", "delete Trello Starter Guide tasks", "archive card <name>", "remove card <name>"
         delete_match1 = re.search(
