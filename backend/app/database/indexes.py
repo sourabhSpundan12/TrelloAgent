@@ -60,6 +60,48 @@ async def create_database_indexes(db: AsyncIOMotorDatabase) -> None:
         ]
         await db["chat_messages"].create_indexes(chat_indexes)
 
-        logger.info("Database indexes for users, refresh_tokens, tools, pending_actions, mcp_servers, and chat_messages successfully ensured.")
+        # Task Assignments collection indexes (Module 1 & 6)
+        task_assignment_indexes = [
+            IndexModel([("employee_id", ASCENDING)], name="idx_task_assignments_employee_id"),
+            IndexModel([("project_manager_id", ASCENDING)], name="idx_task_assignments_pm_id"),
+            IndexModel([("board_id", ASCENDING)], name="idx_task_assignments_board_id"),
+            IndexModel([("trello_card_id", ASCENDING)], name="idx_task_assignments_card_id"),
+            IndexModel([("status", ASCENDING)], name="idx_task_assignments_status"),
+            IndexModel([("due_date", ASCENDING)], name="idx_task_assignments_due_date"),
+            IndexModel([("employee_id", ASCENDING), ("status", ASCENDING)], name="idx_task_assignments_emp_status"),
+            IndexModel([("board_id", ASCENDING), ("status", ASCENDING)], name="idx_task_assignments_board_status"),
+        ]
+        await db["task_assignments"].create_indexes(task_assignment_indexes)
+
+        # Task Assignment History collection indexes (Module 1 & 6)
+        history_indexes = [
+            IndexModel([("assignment_id", ASCENDING)], name="idx_task_history_assignment_id"),
+            IndexModel([("timestamp", DESCENDING)], name="idx_task_history_timestamp"),
+        ]
+        await db["task_assignment_history"].create_indexes(history_indexes)
+
+        # Employee Performance collection indexes (Module 4 & 6)
+        perf_indexes = [
+            IndexModel([("employee_id", ASCENDING)], unique=True, name="idx_employee_performance_emp_id_unique"),
+            IndexModel([("calculated_at", DESCENDING)], name="idx_employee_performance_calculated_at"),
+        ]
+        await db["employee_performance"].create_indexes(perf_indexes)
+
+        # Employee Level History collection indexes (Module 4 & 6)
+        level_history_indexes = [
+            IndexModel([("employee_id", ASCENDING)], name="idx_employee_level_history_emp_id"),
+            IndexModel([("calculated_at", DESCENDING)], name="idx_employee_level_history_calculated_at"),
+        ]
+        await db["employee_level_history"].create_indexes(level_history_indexes)
+
+        # Reminder Logs collection indexes (Module 5 & 6)
+        reminder_indexes = [
+            IndexModel([("assignment_id", ASCENDING), ("due_date_version", ASCENDING)], unique=True, name="idx_reminder_logs_assign_ver_unique"),
+            IndexModel([("trello_card_id", ASCENDING)], name="idx_reminder_logs_trello_card_id"),
+            IndexModel([("created_at", DESCENDING)], name="idx_reminder_logs_created_at"),
+        ]
+        await db["reminder_logs"].create_indexes(reminder_indexes)
+
+        logger.info("Database indexes for core collections and task assignment / performance successfully ensured.")
     except Exception as e:
         logger.warning(f"Warning while ensuring database indexes: {e}")

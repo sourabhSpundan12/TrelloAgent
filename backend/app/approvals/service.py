@@ -508,6 +508,46 @@ class ApprovalService:
         )
         logger.info(f"Action '{action_id}' successfully executed. Card URL: {card_url}")
 
+        # Module 1 auto-correlation: If this created/assigned a card to a team member, record task assignment
+        member_name = draft_params.get("member_name")
+        if member_name and card_id:
+            try:
+                from app.services.task_assignment_service import TaskAssignmentService
+                from app.integrations.trello.client import parse_due_date_for_trello
+                emp = await self.db["users"].find_one({
+                    "$or": [
+                        {"full_name": {"$regex": f"^{re.escape(member_name.strip())}$", "$options": "i"}},
+                        {"full_name": {"$regex": re.escape(member_name.strip()), "$options": "i"}},
+                        {"email": {"$regex": re.escape(member_name.strip()), "$options": "i"}},
+                    ]
+                })
+                if emp:
+                    emp_id = str(emp["_id"])
+                    existing_ass = await self.db["task_assignments"].find_one({"trello_card_id": card_id})
+                    if not existing_ass:
+                        due_dt = None
+                        if due_val:
+                            iso_str = parse_due_date_for_trello(due_val)
+                            if iso_str:
+                                due_dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+
+                        await TaskAssignmentService.create_assignment(
+                            db=self.db,
+                            employee_id=emp_id,
+                            project_manager_id=user_id,
+                            board_id=board_id_val or "default",
+                            trello_card_id=card_id,
+                            task_title=locked.get("draft", {}).get("title") or draft_params.get("name") or "Assigned Task",
+                            task_description=locked.get("draft", {}).get("description"),
+                            due_date=due_dt,
+                            board_name=locked.get("draft", {}).get("board_name"),
+                            trello_card_url=card_url,
+                            employee_name=emp.get("full_name"),
+                            employee_email=emp.get("email"),
+                        )
+            except Exception as e:
+                logger.warning(f"Could not auto-create task assignment for card {card_id}: {e}")
+
         return ApprovalConfirmResponse(
             action_id=action_id,
             status=ApprovalStatus.EXECUTED.value,

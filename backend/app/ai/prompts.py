@@ -71,8 +71,11 @@ INSTRUCTIONS:
 2. Identify the target entity (e.g., card, task, list, report, employee).
 3. Select the most relevant tool_id from AVAILABLE DYNAMIC TOOLS. If none match, set suggested_tool_id to null.
 4. Extract parameters conforming to the selected tool's input_schema properties:
-   - For listing or searching cards (e.g., 'trello_search_cards'):
-     * 'list_name': If the user asks to view/show cards from a specific list or column (e.g. "show cards in the To Do list", "list cards in In-Review", "show Trello Starter Guide tasks", "show Trello Started Guide tasks", "show Today cards"), set 'list_name' to the requested list name (e.g. "To Do", "In-Review", "Doing", "Done", "Trello Starter Guide", "Today"). DO NOT put the list name in 'query'.
+   - For listing, viewing, or searching cards (e.g., 'trello_search_cards'):
+     * CRITICAL: If the user asks to "show card(s)", "list cards", "view cards", "get cards", or "show cards of/in <list>" (e.g. "show card of Doing list", "show Doing tasks", "show cards in To Do", "show Done cards", "show tasks in Doing"):
+       THIS IS ALWAYS intent='search_cards' and suggested_tool_id='trello_search_cards'!
+       NEVER select 'trello_move_card', 'trello_create_card', or 'trello_update_card' when the user wants to VIEW or SHOW cards!
+     * 'list_name': The column or list to view cards from (e.g. "Doing", "To Do", "Done", "In-Review", "Trello Starter Guide"). Strip out prepositions like "of", "in", "from", "under" and the word "list". DO NOT put the list name in 'query'.
      * 'from_date': Start date in ISO format YYYY-MM-DD if the user asks to filter or view tasks within a date range (e.g. "from 2026-11-01", "from 10 Nov", "between Nov 10 and Nov 25").
      * 'to_date': End date in ISO format YYYY-MM-DD if the user asks to filter or view tasks within a date range (e.g. "to 2026-11-20", "until 25 Nov"). Note: Always return both active and completed tasks within the range.
      * 'query': Specific keyword search query (e.g. "OAuth", "database"). Leave empty or omit if the user is asking to show cards from a list or by date.
@@ -81,20 +84,22 @@ INSTRUCTIONS:
    - For task creation (e.g., 'trello_create_card'):
      * 'name': A clean, concise title/heading for the task:
        - If the user says "Create a task for <Person>. ... Ask him/her to <Action> by <Date>" (e.g. "Ask him to Checkin by 20 November"), the task title 'name' is the action requested: "Checkin" (or "Check In"), NOT the person's name, and NEVER prior topics from history!
-       - If the user says "create a task card <Title>...", the title is <Title> (e.g. "Full Stack", "Backend", "JWT Authentication").
+       - If the user says "create a task card <Title>...", the title is <Title> (e.g. "Full Stack", "Backend", "JWT Authentication"). If the user says "create a task card <Title> and assign it to <Person>", this is ALWAYS a 'create_card' intent with 'name' set to <Title> and 'member_name' set to <Person>!
      * 'member_name': Name of team member or employee to assign or add to the card if mentioned in the command (e.g. "Yogesh", "Alex Rivera", "Jordan Lee").
      * 'desc': YOU MUST generate an informative, domain-relevant, and context-rich description directly related to the task heading/action (e.g. for "Backend", describe designing backend architecture, API endpoints, database interactions, schema validation, and unit test coverage; for "Frontend", describe building responsive UI components, state management, and accessibility; for "Auth", describe authentication workflows, token lifecycle, and route protection). CRITICAL: NEVER repeat or echo the user command prompt (DO NOT write things like "Create backend card with due date Thursday and assigned to..."). Formulate professional engineering and operational deliverables implied by the task title. If the user explicitly provided custom notes or specifications, incorporate them. NEVER leave 'desc' empty and NEVER pull descriptions from previous messages.
      * 'list_name': Target column name (e.g. "To Do", "Doing", "In-Review", "Testing", defaults to "To Do" if unspecified).
      * 'priority': Task priority ("LOW", "MEDIUM", "HIGH", "URGENT").
      * 'due_date': Due date if mentioned in the command (e.g. "21 November 2026", "tomorrow", "next Friday", "2026-11-20").
    - For moving tasks (e.g., 'trello_move_card'):
+     * CRITICAL: 'trello_move_card' is ONLY for moving an EXISTING task card to another column (e.g. "move card Login to Done", "move Backend to Doing").
+     * NEVER select 'trello_move_card' when the user says "show card of <list>", "show cards in <list>", or "show tasks"! That is a read operation ('search_cards').
      * 'card_name': The exact name or title of the card to move (e.g. "Backend", "Login API").
      * 'target_status': The EXACT destination list name requested by the user (e.g. "Testing", "In-Review", "To Do", "Doing", "Done", or any custom list name). NEVER coerce custom list names into other predefined statuses.
      * 'due_date': Due date or deadline if mentioned in the command (e.g. "tomorrow", "next Friday", "2026-11-20").
      * 'description': Any additional notes, description, or instructions to update on the card.
    - For updating or assigning members to tasks (e.g., 'trello_update_card'):
      * 'card_name': The title or name of the existing card to find and update (e.g. "Register Page", "Register", "Login API", "Backend").
-     * 'member_name': Name or username of the team member or employee to assign or add to the card (e.g. "Alex Rivera"). NOTE: When the user says "on <card> add member <person>" or "assign <person> to <card>" or "add <person> to <card>", this is ALWAYS an 'update_card' intent using 'trello_update_card', NOT 'create_card'!
+     * 'member_name': Name or username of the team member or employee to assign or add to the card (e.g. "Alex Rivera"). NOTE: If the user says "create a task card ... and assign it to ...", this is ALWAYS a 'create_card' intent, NOT 'update_card'! 'update_card' is ONLY for modifying an existing card (e.g. "on <card> add member <person>", "assign <person> to <card>").
      * 'new_title': Updated title if requested (e.g. updated title).
      * 'new_description': Updated description if requested.
      * 'new_due_date': Updated due date if requested.
@@ -125,28 +130,33 @@ INSTRUCTIONS:
 2. Identify the target entity (e.g., card, task, list, report, employee).
 3. Select the most relevant tool_id from AVAILABLE DYNAMIC TOOLS. If none match, set suggested_tool_id to null.
 4. Extract parameters conforming to the selected tool's input_schema properties:
-   - For listing or searching cards (e.g., 'trello_search_cards'):
-     * 'list_name': If the user asks to view/show cards from a specific list or column (e.g. "show cards in the To Do list", "list cards in In-Review", "show Trello Starter Guide tasks", "show Trello Started Guide tasks", "show Today cards"), set 'list_name' to the requested list name (e.g. "To Do", "In-Review", "Doing", "Done", "Trello Starter Guide", "Today"). DO NOT put the list name in 'query'.
+   - For listing, viewing, or searching cards (e.g., 'trello_search_cards'):
+     * CRITICAL: If the user asks to "show card(s)", "list cards", "view cards", "get cards", or "show cards of/in <list>" (e.g. "show card of Doing list", "show Doing tasks", "show cards in To Do", "show Done cards", "show tasks in Doing"):
+       THIS IS ALWAYS intent='search_cards' and suggested_tool_id='trello_search_cards'!
+       NEVER select 'trello_move_card', 'trello_create_card', or 'trello_update_card' when the user wants to VIEW or SHOW cards!
+     * 'list_name': The column or list to view cards from (e.g. "Doing", "To Do", "Done", "In-Review", "Trello Starter Guide"). Strip out prepositions like "of", "in", "from", "under" and the word "list". DO NOT put the list name in 'query'.
      * 'from_date': Start date in ISO format YYYY-MM-DD if the user asks to filter or view tasks within a date range (e.g. "from 2026-11-01", "from 10 Nov", "between Nov 10 and Nov 25").
      * 'to_date': End date in ISO format YYYY-MM-DD if the user asks to filter or view tasks within a date range (e.g. "to 2026-11-20", "until 25 Nov"). Note: Always return both active and completed tasks within the range.
      * 'query': Specific keyword search query (e.g. "OAuth", "database"). Leave empty or omit if the user is asking to show cards from a list or by date.
    - For list creation (e.g., 'trello_create_list'):
      * 'name': The name of the new column or list to create (e.g. "In-Review", "Backlog", "Testing").
    - For task creation (e.g., 'trello_create_card'):
-     * 'name': A clean, concise title/heading for the task (e.g. "Full Stack", "Backend", "JWT Authentication"). Note: If the user says "create a task card <Title>...", the title is <Title>!
+     * 'name': A clean, concise title/heading for the task (e.g. "Full Stack", "Backend", "JWT Authentication"). Note: If the user says "create a task card <Title>...", the title is <Title>! If the user says "create a task card <Title> and assign it to <Person>", the intent is 'create_card' with 'name' set to <Title> and 'member_name' set to <Person>!
      * 'member_name': Name of team member or employee to assign or add to the card if mentioned in the command (e.g. "Alex Rivera", "Jordan Lee").
      * 'desc': YOU MUST ALWAYS generate an informative, professional description directly related to the task heading/topic. Detail key objectives, deliverables, and implementation scope for this specific task. If the user provides additional information or description in their message, include it in 'desc'. NEVER leave 'desc' empty and NEVER use a generic placeholder like "Task created via assistant".
      * 'list_name': Target column name (e.g. "To Do", "Doing", "In-Review", "Testing", defaults to "To Do" if unspecified).
      * 'priority': Task priority ("LOW", "MEDIUM", "HIGH", "URGENT").
      * 'due_date': Due date if mentioned in the command (e.g. "21 November 2026", "tomorrow", "next Friday", "2026-11-20").
    - For moving tasks (e.g., 'trello_move_card'):
+     * CRITICAL: 'trello_move_card' is ONLY for moving an EXISTING task card to another column (e.g. "move card Login to Done", "move Backend to Doing").
+     * NEVER select 'trello_move_card' when the user says "show card of <list>", "show cards in <list>", or "show tasks"! That is a read operation ('search_cards').
      * 'card_name': The exact name or title of the card to move (e.g. "Backend", "Login API").
      * 'target_status': The EXACT destination list name requested by the user (e.g. "Testing", "In-Review", "To Do", "Doing", "Done", or any custom list name). NEVER coerce custom list names into other predefined statuses.
      * 'due_date': Due date or deadline if mentioned in the command (e.g. "tomorrow", "next Friday", "2026-11-20").
      * 'description': Any additional notes, description, or instructions to update on the card.
    - For updating or assigning members to tasks (e.g., 'trello_update_card'):
      * 'card_name': The title or name of the existing card to find and update (e.g. "Register Page", "Register", "Login API", "Backend").
-     * 'member_name': Name or username of the team member or employee to assign or add to the card (e.g. "Alex Rivera"). NOTE: When the user says "on <card> add member <person>" or "assign <person> to <card>" or "add <person> to <card>", this is ALWAYS an 'update_card' intent using 'trello_update_card', NOT 'create_card'!
+     * 'member_name': Name or username of the team member or employee to assign or add to the card (e.g. "Alex Rivera"). NOTE: If the user says "create a task card ... and assign it to ...", this is ALWAYS a 'create_card' intent, NOT 'update_card'! 'update_card' is ONLY for modifying an existing card (e.g. "on <card> add member <person>", "assign <person> to <card>").
      * 'new_title': Updated title if requested (e.g. updated title).
      * 'new_description': Updated description if requested.
      * 'new_due_date': Updated due date if requested.

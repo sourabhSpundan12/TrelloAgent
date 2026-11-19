@@ -55,7 +55,7 @@ class KeywordSearch(BaseKeywordSearch):
 
         # 3. Keywords
         tool_keywords = [str(k).lower() for k in tool.get("keywords", [])]
-        matched_kw = [k for k in tool_keywords if k in query_tokens or any(k in t for t in query_tokens)]
+        matched_kw = [k for k in tool_keywords if k in query_tokens or any(k in t or t in k for t in query_tokens)]
         if matched_kw:
             raw_score += 2.5 * len(matched_kw)
             matched_criteria.append(f"keyword:{','.join(matched_kw[:3])}")

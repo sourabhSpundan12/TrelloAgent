@@ -530,6 +530,14 @@ class MockTrelloArchiveCardExecutor(BaseExecutor):
                             logger.warning(f"Failed deleting card {c.get('id')}: {e}")
 
                     msg = f"Successfully deleted {len(deleted_names)} card(s) from '{matching_list['name']}' list on Trello."
+                    try:
+                        from app.database.mongodb import get_database
+                        db = await get_database()
+                        del_ids = [str(c["id"]) for c in list_cards if c.get("id")]
+                        if del_ids:
+                            await db["task_assignments"].delete_many({"trello_card_id": {"$in": del_ids}})
+                    except Exception as db_err:
+                        logger.debug(f"Failed pruning task_assignments on bulk list delete: {db_err}")
                     return ExecutionResult(
                         tool_id=tool.get("tool_id", "trello_delete_card"),
                         status="SUCCESS",
@@ -562,6 +570,12 @@ class MockTrelloArchiveCardExecutor(BaseExecutor):
                 if card_id:
                     del_res = await trello_tools.trello_delete_card(card_id=card_id)
                     if del_res.get("status") == "SUCCESS":
+                        try:
+                            from app.database.mongodb import get_database
+                            db = await get_database()
+                            await db["task_assignments"].delete_many({"trello_card_id": str(card_id)})
+                        except Exception as db_err:
+                            logger.debug(f"Failed pruning task_assignments for card {card_id}: {db_err}")
                         return ExecutionResult(
                             tool_id=tool.get("tool_id", "trello_delete_card"),
                             status="SUCCESS",

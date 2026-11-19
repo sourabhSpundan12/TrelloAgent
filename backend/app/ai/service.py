@@ -251,6 +251,18 @@ class AIService:
                     PIITerminalLogger.log_stage_7_restoration_start(req_id, 0)
                     PIITerminalLogger.log_stage_7_restoration_complete(req_id, 0)
 
+            # Stage 7a: Deterministic Intent Correction Guardrail
+            # Prevent read queries ("show card...", "list tasks...") from being wrongly classified as mutations
+            cmd_lower = command.lower().strip()
+            is_explicit_read = (
+                any(cmd_lower.startswith(prefix) for prefix in ["show ", "list ", "view ", "display ", "get "])
+                or ("show" in cmd_lower and any(w in cmd_lower for w in ["card", "cards", "task", "tasks", "list", "lists"]))
+            )
+            if is_explicit_read and not any(w in cmd_lower for w in ["create", "add new", "move to", "shift to", "transfer to"]):
+                if output.intent in ("move_card", "create_card", "update_card", "create_list"):
+                    logger.info(f"Corrected misclassified read command '{command}' from {output.intent} to search_cards")
+                    output = self._fallback_deterministic_interpreter(command, discovered_tools)
+
             # Stage 7b: Output Guardrails (Anti-hallucination, Confidence Clamping, Parameter Sanitization)
             output = LLMGuardrails.validate_output(output, discovered_tools)
 
@@ -374,30 +386,48 @@ class AIService:
                 confidence=0.96,
             )
 
-        # Check for listing cards: "show cards in the to do list", "show Trello Starter Guide tasks", "list cards"
-        if ("card" in cmd_lower or "cards" in cmd_lower or "task" in cmd_lower or "tasks" in cmd_lower) and any(w in cmd_lower for w in ["show", "list", "view"]) and not any(w in cmd_lower for w in ["create", "add", "new", "move", "details", "inspect"]):
-            tool_id = match_tool_id("trello_search_cards") or match_tool_id("trello_list_cards")
-            if tool_id:
-                list_match = re.search(r"(?:in|to|under)\s+(?:the\s+)?([a-zA-Z0-9_\s\-]+?)(?:\s+list|\s+column)?$", command, re.IGNORECASE)
-                list_name = list_match.group(1).strip() if list_match else None
-                if not list_name:
-                    list_match2 = re.search(
-                        r"(?:show|list|view|get)\s+(?:the\s+)?([a-zA-Z0-9_\s\-]+?)\s+(?:tasks?|cards?)\b",
-                        command,
-                        re.IGNORECASE,
-                    )
-                    if list_match2:
-                        cand = list_match2.group(1).strip()
-                        if cand.lower() not in ("all", "my", "live", "trello", "all the", "me"):
-                            list_name = cand
-                return GeminiIntentOutput(
-                    intent="search_cards" if "search" in tool_id else "list_cards",
-                    entity="card",
-                    parameters={"list_name": list_name} if list_name else {},
-                    suggested_tool_id=tool_id,
-                    requires_clarification=False,
-                    confidence=0.94,
+        # Check for listing cards: "show cards in the to do list", "show card of Doing list", "show Doing tasks", "list cards"
+        is_show_query = (
+            any(cmd_lower.startswith(w) for w in ["show", "list ", "view ", "display ", "get "])
+            or any(w in cmd_lower for w in ["show ", "view ", "display "])
+        )
+        if is_show_query and not any(w in cmd_lower for w in ["create", "add", "new", "move", "delete", "archive", "remove", "clear", "trash", "empty"]):
+            tool_id = match_tool_id("trello_search_cards") or match_tool_id("trello_list_cards") or "trello_search_cards"
+            list_name = None
+            list_match = re.search(r"\b(?:in|under|of|from)\s+(?:the\s+)?([a-zA-Z0-9_\s\-]+?)(?:\s+list|\s+column)?$", command, re.IGNORECASE)
+            if list_match:
+                list_name = list_match.group(1).strip()
+            if not list_name:
+                list_match2 = re.search(
+                    r"(?:show|list|view|get|display)\s+(?:the\s+)?([a-zA-Z0-9_\s\-]+?)\s+(?:tasks?|cards?)\b",
+                    command,
+                    re.IGNORECASE,
                 )
+                if list_match2:
+                    cand = list_match2.group(1).strip()
+                    if cand.lower() not in ("all", "my", "live", "trello", "all the", "me", "card", "cards", "task", "tasks"):
+                        list_name = cand
+            if not list_name:
+                list_match3 = re.search(
+                    r"(?:show|list|view|get|display)\s+(?:the\s+)?([a-zA-Z0-9_\s\-]+?)\s+(?:list|column)$",
+                    command,
+                    re.IGNORECASE,
+                )
+                if list_match3:
+                    cand = list_match3.group(1).strip()
+                    if cand.lower() not in ("all", "my", "live", "trello", "all the"):
+                        list_name = cand
+            if list_name:
+                list_name = re.sub(r"\s+list$", "", list_name, flags=re.IGNORECASE).strip()
+
+            return GeminiIntentOutput(
+                intent="search_cards",
+                entity="card",
+                parameters={"list_name": list_name} if list_name else {},
+                suggested_tool_id=tool_id,
+                requires_clarification=False,
+                confidence=0.96,
+            )
 
         # Check for list creation: "add another list name In-Review", "create list <name>", "add list <name>"
         create_list_match = re.search(
@@ -491,39 +521,9 @@ class AIService:
                 confidence=0.91,
             )
 
-        # Check for card member assignment: "on register card add member sourabh mishra", "add member sourabh to register card", "assign sourabh to register page"
-        member_match1 = re.search(r"on\s+(.+?)(?:\s+card)?\s+(?:add|assign)\s+(?:member\s+)?(.+)", command, re.IGNORECASE)
-        member_match2 = re.search(r"(?:add|assign)\s+(?:member\s+)?(.+?)\s+(?:to|on)\s+(.+?)(?:\s+card)?$", command, re.IGNORECASE)
-        if member_match1 or member_match2:
-            if member_match1:
-                assign_card_name = member_match1.group(1).strip().strip('"\'')
-                assign_member = member_match1.group(2).strip().strip('"\'')
-            else:
-                assign_member = member_match2.group(1).strip().strip('"\'')
-                assign_card_name = member_match2.group(2).strip().strip('"\'')
-
-            tool_id = match_tool_id("trello_update_card") or (discovered_tools[0].tool.tool_id if discovered_tools else None)
-            assign_params: Dict[str, Any] = {
-                "card_name": assign_card_name,
-                "member_name": assign_member,
-                "card_id": "c101",
-            }
-            if cmd_due_date:
-                assign_params["due_date"] = cmd_due_date
-            if cmd_additional_desc:
-                assign_params["new_description"] = cmd_additional_desc
-            return GeminiIntentOutput(
-                intent="update_card",
-                entity="card",
-                parameters=assign_params,
-                suggested_tool_id=tool_id,
-                requires_clarification=False,
-                confidence=0.95,
-            )
-
-        # Check for card creation: "create card <name>", "create a task card <name>", "add a card named <name>"
+        # Check for card creation FIRST: "create card <name>", "create a task card <name>", "create task card <name> and assign it to <member>"
         create_match = re.search(
-            r"(?:create|add|new)\s+(?:a\s+)?(?:task\s+card|card|task)(?:\s+named|\s+called|\s*:\s*|\s+to\s+)?\s*(.+)",
+            r"(?:create|add|new|make)\s+(?:a\s+)?(?:task\s+card|card|task)(?:\s+named|\s+called|\s*:\s*|\s+to\s+)?\s*(.+)",
             command,
             re.IGNORECASE,
         )
@@ -532,21 +532,23 @@ class AIService:
             if raw_card_name.lower().startswith("to "):
                 raw_card_name = raw_card_name[3:].strip()
 
-            # Extract member to assign if present (e.g. "and add member sourabh mishra", "with member Alex", "for Yogesh")
+            # Extract member to assign if present (e.g. "and assign it to shilu mishra", "and add member sourabh mishra", "with member Alex", "for Yogesh")
             member_name = None
             member_match = re.search(
-                r"(?:and\s+)?(?:add\s+member|assign\s+member|assign\s+to|member\s*[:=]?)\s+([a-zA-Z0-9_\-\s\[\]]+?)(?:\s+(?:due|with|under|in)|$)",
+                r"(?:and\s+)?(?:add\s+member|assign\s+member|assign\s+(?:it\s+)?to|member\s*[:=]?)\s+([a-zA-Z0-9_\-\s\[\]]+?)(?:\s+(?:due|with|under|in|priority)|$)",
                 raw_card_name,
                 re.IGNORECASE,
             )
             if member_match:
-                member_name = member_match.group(1).strip().strip('"\'')
-                raw_card_name = re.sub(
-                    r"(?:and\s+)?(?:add\s+member|assign\s+member|assign\s+to|member\s*[:=]?)\s+" + re.escape(member_name),
-                    "",
-                    raw_card_name,
-                    flags=re.IGNORECASE,
-                ).strip()
+                cand_member = member_match.group(1).strip().strip('"\'')
+                if cand_member.lower() not in ("it", "the", "this", "that", "a", "an"):
+                    member_name = cand_member
+                    raw_card_name = re.sub(
+                        r"(?:and\s+)?(?:add\s+member|assign\s+member|assign\s+(?:it\s+)?to|member\s*[:=]?)\s+" + re.escape(cand_member),
+                        "",
+                        raw_card_name,
+                        flags=re.IGNORECASE,
+                    ).strip()
 
             # Handle pattern: "create a task for <Member> ... ask him/her to <Action>"
             for_member_match = re.search(
@@ -662,6 +664,37 @@ class AIService:
                 requires_clarification=False,
                 confidence=0.96,
             )
+
+        # Check for card member assignment on existing cards: "on register card add member sourabh mishra", "add member sourabh to register card", "assign sourabh to register page"
+        member_match1 = re.search(r"^on\s+(.+?)(?:\s+card)?\s+(?:add|assign)\s+(?:member\s+)?(.+)", command, re.IGNORECASE)
+        member_match2 = re.search(r"^(?:please\s+)?(?:add|assign)\s+(?:member\s+)?(.+?)\s+(?:to|on)\s+(.+?)(?:\s+card)?$", command, re.IGNORECASE)
+        if member_match1 or member_match2:
+            if member_match1:
+                assign_card_name = member_match1.group(1).strip().strip('"\'')
+                assign_member = member_match1.group(2).strip().strip('"\'')
+            else:
+                assign_member = member_match2.group(1).strip().strip('"\'')
+                assign_card_name = member_match2.group(2).strip().strip('"\'')
+
+            if assign_member.lower() not in ("it", "the", "this", "that", "a", "an"):
+                tool_id = match_tool_id("trello_update_card") or (discovered_tools[0].tool.tool_id if discovered_tools else None)
+                assign_params: Dict[str, Any] = {
+                    "card_name": assign_card_name,
+                    "member_name": assign_member,
+                    "card_id": "c101",
+                }
+                if cmd_due_date:
+                    assign_params["due_date"] = cmd_due_date
+                if cmd_additional_desc:
+                    assign_params["new_description"] = cmd_additional_desc
+                return GeminiIntentOutput(
+                    intent="update_card",
+                    entity="card",
+                    parameters=assign_params,
+                    suggested_tool_id=tool_id,
+                    requires_clarification=False,
+                    confidence=0.95,
+                )
 
         # Check for card movement: "move <card> to <status>" or "<card> card move to <status>" or "mark <card> as done"
         move_match1 = re.search(

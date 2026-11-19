@@ -209,3 +209,22 @@ async def trello_delete_card(card_id: str) -> Dict[str, Any]:
         logger.warning(f"trello_delete_card failed ({err}); attempting archive fallback.")
         return await trello_archive_card(card_id=card_id)
 
+
+async def trello_add_comment(card_id: str, text: str) -> Dict[str, Any]:
+    """Post a comment on an existing Trello card (Module 5 One-Hour Reminder)."""
+    if not card_id or not card_id.strip():
+        return {"status": "ERROR", "error": True, "message": "card_id is required."}
+    if not text or not text.strip():
+        return {"status": "ERROR", "error": True, "message": "text is required."}
+    client = get_trello_client()
+    try:
+        comment = await client.add_comment(card_id=card_id.strip(), text=text.strip())
+        return {"status": "SUCCESS", "action": "COMMENT_ADDED", "comment": comment}
+    except TrelloError as err:
+        logger.warning(f"trello_add_comment failed: {err}")
+        return {"status": "ERROR", "error": True, "message": err.message, "status_code": err.status_code}
+    except Exception as err:
+        logger.warning(f"trello_add_comment unexpected error: {err}")
+        return {"status": "ERROR", "error": True, "message": str(err)}
+
+

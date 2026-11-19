@@ -9,6 +9,8 @@ import {
   Board,
   ChangePasswordPayload,
   ChatSession,
+  EmployeeLevelHistoryItem,
+  EmployeeTaskReportSummary,
   ForgotPasswordPayload,
   HealthResponse,
   LoginCredentials,
@@ -17,6 +19,8 @@ import {
   MCPServerRegisterPayload,
   NotificationsResponse,
   ResetPasswordPayload,
+  TaskAssignment,
+  TaskAssignmentHistoryItem,
   VerifyResetCodePayload,
 } from '../types';
 
@@ -470,6 +474,149 @@ export const markNotificationsRead = async (
   const response = await api.post<{ status: string; message: string }>(
     '/api/v1/notifications/mark-read',
     { notification_id: notificationId, mark_all: markAll },
+    headers ? { headers } : undefined
+  );
+  return response.data;
+};
+
+// --- Employee Task Tracking & Performance (Modules 1, 2, 3, 4, 7) ---
+export const fetchEmployeeSummaries = async (
+  boardId?: string,
+  token?: string
+): Promise<EmployeeTaskReportSummary[]> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const url = boardId && boardId !== 'all'
+    ? `/api/v1/employees/reports/summary?board_id=${encodeURIComponent(boardId)}`
+    : '/api/v1/employees/reports/summary';
+  const response = await api.get<EmployeeTaskReportSummary[]>(url, headers ? { headers } : undefined);
+  return response.data;
+};
+
+export const fetchEmployeeReport = async (
+  employeeId: string,
+  params?: { boardId?: string; status?: string; fromDate?: string; toDate?: string },
+  token?: string
+): Promise<EmployeeTaskReportSummary> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const query = new URLSearchParams();
+  if (params?.boardId && params.boardId !== 'all') query.append('board_id', params.boardId);
+  if (params?.status && params.status !== 'all') query.append('status', params.status);
+  if (params?.fromDate) query.append('from_date', params.fromDate);
+  if (params?.toDate) query.append('to_date', params.toDate);
+  const qStr = query.toString() ? `?${query.toString()}` : '';
+  const response = await api.get<EmployeeTaskReportSummary>(`/api/v1/employees/${employeeId}/report${qStr}`, headers ? { headers } : undefined);
+  return response.data;
+};
+
+export const fetchEmployeePerformance = async (
+  employeeId: string,
+  token?: string
+): Promise<any> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.get(`/api/v1/employees/${employeeId}/performance`, headers ? { headers } : undefined);
+  return response.data;
+};
+
+export const fetchEmployeeLevelHistory = async (
+  employeeId: string,
+  token?: string
+): Promise<EmployeeLevelHistoryItem[]> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.get<EmployeeLevelHistoryItem[]>(`/api/v1/employees/${employeeId}/performance/history`, headers ? { headers } : undefined);
+  return response.data;
+};
+
+export const recalculateEmployeePerformance = async (
+  employeeId: string,
+  token?: string
+): Promise<any> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.post(`/api/v1/employees/${employeeId}/performance/recalculate`, {}, headers ? { headers } : undefined);
+  return response.data;
+};
+
+export const fetchEmployeeAssignments = async (
+  employeeId: string,
+  params?: { boardId?: string; status?: string; fromDate?: string; toDate?: string },
+  token?: string
+): Promise<TaskAssignment[]> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const query = new URLSearchParams();
+  if (params?.boardId && params.boardId !== 'all') query.append('board_id', params.boardId);
+  if (params?.status && params.status !== 'all') query.append('status', params.status);
+  if (params?.fromDate) query.append('from_date', params.fromDate);
+  if (params?.toDate) query.append('to_date', params.toDate);
+  const qStr = query.toString() ? `?${query.toString()}` : '';
+  const response = await api.get<TaskAssignment[]>(`/api/v1/task-assignments/employee/${employeeId}${qStr}`, headers ? { headers } : undefined);
+  return response.data;
+};
+
+export const createTaskAssignment = async (
+  payload: {
+    employee_id: string;
+    board_id: string;
+    trello_card_id: string;
+    task_title: string;
+    task_description?: string;
+    due_date?: string;
+    board_name?: string;
+    trello_card_url?: string;
+  },
+  token?: string
+): Promise<TaskAssignment> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.post<TaskAssignment>('/api/v1/task-assignments', payload, headers ? { headers } : undefined);
+  return response.data;
+};
+
+export const updateAssignmentDueDate = async (
+  assignmentId: string,
+  dueDate: string,
+  reason?: string,
+  token?: string
+): Promise<TaskAssignment> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.patch<TaskAssignment>(
+    `/api/v1/task-assignments/${assignmentId}/due-date`,
+    { due_date: dueDate, reason },
+    headers ? { headers } : undefined
+  );
+  return response.data;
+};
+
+export const startAssignmentTask = async (
+  assignmentId: string,
+  token?: string
+): Promise<TaskAssignment> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.post<TaskAssignment>(
+    `/api/v1/task-assignments/${assignmentId}/start`,
+    {},
+    headers ? { headers } : undefined
+  );
+  return response.data;
+};
+
+export const completeAssignmentTask = async (
+  assignmentId: string,
+  token?: string
+): Promise<TaskAssignment> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.post<TaskAssignment>(
+    `/api/v1/task-assignments/${assignmentId}/complete`,
+    {},
+    headers ? { headers } : undefined
+  );
+  return response.data;
+};
+
+export const fetchAssignmentHistory = async (
+  assignmentId: string,
+  token?: string
+): Promise<TaskAssignmentHistoryItem[]> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.get<TaskAssignmentHistoryItem[]>(
+    `/api/v1/task-assignments/${assignmentId}/history`,
     headers ? { headers } : undefined
   );
   return response.data;

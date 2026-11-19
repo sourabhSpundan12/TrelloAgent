@@ -5,11 +5,13 @@ from app.api.v1.endpoints import (
     approvals,
     auth,
     boards,
+    employee_performance,
     health,
     mcp,
     notifications,
     overview,
     reports,
+    task_assignments,
     tasks,
     users,
 )
@@ -51,3 +53,7 @@ api_v1_router.include_router(boards.router, prefix="/boards", tags=["Board Manag
 
 # Real-time Dynamic Notifications
 api_v1_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
+
+# Employee Task Tracking, Assignments & Performance (Modules 1, 3, 4, 7)
+api_v1_router.include_router(task_assignments.router, prefix="/task-assignments", tags=["Task Assignments"])
+api_v1_router.include_router(employee_performance.router, prefix="/employees", tags=["Employee Performance"])
