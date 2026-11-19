@@ -106,6 +106,7 @@ export interface ChatMessage {
   id: string;
   conversation_id?: string;
   board_id?: string;
+  model_id?: string;
   sender: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
@@ -129,6 +130,8 @@ export interface AIInterpretResponse {
   intent: string;
   entity: string;
   parameters: Record<string, any>;
+  board_id?: string | null;
+  model_id?: string | null;
   selected_tool_id?: string | null;
   selected_tool_name?: string | null;
   approval_required: boolean;
@@ -363,7 +366,7 @@ export interface AuthMessageResponse {
 // Real-Time Notification Types
 export interface NotificationItem {
   id: string;
-  type: 'APPROVAL_REQUIRED' | 'ACTION_EXECUTED' | 'ACTION_CANCELLED' | 'ACTION_FAILED' | 'INFO';
+  type: 'APPROVAL_REQUIRED' | 'ACTION_EXECUTED' | 'ACTION_CANCELLED' | 'ACTION_FAILED' | 'INFO' | 'DEADLINE_REMINDER';
   title: string;
   message: string;
   created_at: string;
@@ -373,6 +376,10 @@ export interface NotificationItem {
   card_url?: string;
   target_tab?: string;
   priority?: string;
+  stage?: string;
+  stage_label?: string;
+  urgency?: string;
+  due_date?: string;
 }
 
 export interface NotificationsResponse {

@@ -177,13 +177,13 @@ export const EmployeesPage: React.FC = () => {
           </div>
           <div>
             <span className="font-bold text-slate-900 dark:text-slate-100 flex items-center space-x-2">
-              <span className="text-sm">Team Workload & Collaborators</span>
+              <span className="text-sm">Team Workload & Collaborators {activeBoard ? `• ${activeBoard.name}` : ''}</span>
               <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30 text-[10px] font-mono font-semibold uppercase tracking-wide">
                 Live Trello Synced
               </span>
             </span>
             <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
-              Live collaborator distribution computed directly from Trello board cards and registered accounts.
+              Live collaborator distribution computed for {activeBoard ? `"${activeBoard.name}"` : 'active board'} from Trello cards and member assignments.
             </p>
           </div>
         </div>

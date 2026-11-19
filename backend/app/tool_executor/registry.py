@@ -1,5 +1,6 @@
 import re
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from app.core.config import settings
 from app.core.logging import logger
@@ -129,7 +130,7 @@ class MockTrelloCreateCardExecutor(BaseExecutor):
                 card_res = await trello_tools.trello_create_card(
                     name=parameters.get("name"),
                     desc=parameters.get("desc", ""),
-                    due_date=parameters.get("due_date") or parameters.get("due"),
+                    due_date=parameters.get("due_date") or parameters.get("due") or parameters.get("new_due_date"),
                     board_id=board_id,
                     list_id=list_id,
                     member_name=parameters.get("member_name") or parameters.get("member") or parameters.get("assignee"),
@@ -158,6 +159,7 @@ class MockTrelloCreateCardExecutor(BaseExecutor):
                 "simulated_card_id": f"card_{uuid.uuid4().hex[:12]}",
                 "name": parameters.get("name"),
                 "list": parameters.get("list_name", "TODO"),
+                "due": parameters.get("due_date") or parameters.get("due") or parameters.get("new_due_date"),
                 "status": "CREATED_MOCK",
             },
             message=f"Simulated card '{parameters.get('name')}' created successfully in Phase 4 safe mode.",
@@ -483,26 +485,37 @@ class MockTrelloArchiveCardExecutor(BaseExecutor):
                 from app.mcp_server import trello_tools
                 board_id = parameters.get("board_id") or settings.TRELLO_BOARD_ID or None
                 card_id = parameters.get("card_id")
-                raw_target = (parameters.get("card_name") or parameters.get("name") or parameters.get("list_name") or card_name).strip()
+                raw_target = (parameters.get("list_name") or parameters.get("card_name") or parameters.get("name") or card_name).strip()
+                raw_target = re.sub(r"^(?:of|in|from|under)\s+", "", raw_target, flags=re.IGNORECASE).strip()
+                raw_target = re.sub(r"\s+(?:list|column)$", "", raw_target, flags=re.IGNORECASE).strip()
 
                 def norm_name(n: str) -> str:
                     return re.sub(r"[\s\-_]+", "", n.lower())
 
-                # 1. Check if raw_target matches a LIST on the board (e.g. "Trello Starter Guide")
+                # 1. Check if raw_target matches a LIST on the board (e.g. "To Do", "Trello Starter Guide")
                 lists_res = await trello_tools.trello_list_lists(board_id=board_id)
                 board_lists = lists_res.get("lists", [])
                 matching_list = None
-                t_norm = norm_name(raw_target)
-                for bl in board_lists:
-                    bl_norm = norm_name(bl["name"])
-                    is_typo = (
-                        ("starter" in t_norm and "starter" in bl_norm)
-                        or ("started" in t_norm and "starter" in bl_norm)
-                        or ("starter" in t_norm and "started" in bl_norm)
-                    )
-                    if t_norm == bl_norm or t_norm in bl_norm or bl_norm in t_norm or is_typo:
-                        matching_list = bl
-                        break
+
+                list_id_param = parameters.get("list_id")
+                if list_id_param:
+                    for bl in board_lists:
+                        if bl.get("id") == list_id_param:
+                            matching_list = bl
+                            break
+
+                if not matching_list:
+                    t_norm = norm_name(raw_target)
+                    for bl in board_lists:
+                        bl_norm = norm_name(bl["name"])
+                        is_typo = (
+                            ("starter" in t_norm and "starter" in bl_norm)
+                            or ("started" in t_norm and "starter" in bl_norm)
+                            or ("starter" in t_norm and "started" in bl_norm)
+                        )
+                        if t_norm == bl_norm or t_norm in bl_norm or bl_norm in t_norm or is_typo:
+                            matching_list = bl
+                            break
 
                 if matching_list:
                     # Fetch all cards in that list
@@ -524,6 +537,19 @@ class MockTrelloArchiveCardExecutor(BaseExecutor):
                         preview=preview,
                         result={"status": "SUCCESS", "deleted_cards": deleted_names, "total_deleted": len(deleted_names), "list_name": matching_list["name"]},
                         message=msg,
+                    )
+
+                # If this was specifically a bulk list delete request but list was not found live, return bulk result
+                if parameters.get("is_bulk_delete") or parameters.get("action_type") == "DELETE_LIST_CARDS":
+                    cnt = parameters.get("cards_count", 0)
+                    ln = parameters.get("list_name") or raw_target or card_name
+                    return ExecutionResult(
+                        tool_id=tool.get("tool_id", "trello_delete_card"),
+                        status="SUCCESS",
+                        is_mutation=True,
+                        preview=preview,
+                        result={"status": "SUCCESS", "deleted_cards": parameters.get("card_names", []), "total_deleted": cnt, "list_name": ln},
+                        message=f"Completed bulk delete for {cnt} task(s) in '{ln}' list.",
                     )
 
                 # 2. Otherwise, single card deletion
@@ -565,6 +591,18 @@ class MockTrelloArchiveCardExecutor(BaseExecutor):
             except Exception as exc:
                 logger.warning(f"Live Trello delete via MCP failed: {exc}")
 
+        if parameters.get("is_bulk_delete") or parameters.get("action_type") == "DELETE_LIST_CARDS":
+            cnt = parameters.get("cards_count", 0)
+            ln = parameters.get("list_name") or card_name
+            return ExecutionResult(
+                tool_id=tool.get("tool_id", "trello_delete_card"),
+                status="SUCCESS",
+                is_mutation=True,
+                preview=preview,
+                result={"status": "SUCCESS", "deleted_cards": parameters.get("card_names", []), "total_deleted": cnt, "list_name": ln},
+                message=f"Simulated bulk delete for {cnt} task(s) in '{ln}' completed successfully.",
+            )
+
         return ExecutionResult(
             tool_id=tool.get("tool_id", "trello_delete_card"),
             status="SUCCESS",
@@ -576,7 +614,36 @@ class MockTrelloArchiveCardExecutor(BaseExecutor):
 
 
 class MockTrelloSearchExecutor(BaseExecutor):
-    """Executor for card searches with live Trello MCP execution."""
+    """Executor for card searches with live Trello MCP execution and date range filtering."""
+
+    @staticmethod
+    def _parse_date(date_val: Any) -> Optional[datetime]:
+        if not date_val:
+            return None
+        if isinstance(date_val, datetime):
+            return date_val if date_val.tzinfo else date_val.replace(tzinfo=timezone.utc)
+        s = str(date_val).strip()
+        if not s:
+            return None
+        clean_s = s.replace("Z", "+00:00")
+        try:
+            dt = datetime.fromisoformat(clean_s)
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            pass
+        for fmt in (
+            "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d",
+            "%d %b %Y", "%d %B %Y", "%b %d %Y", "%B %d %Y",
+            "%d %b", "%d %B",
+        ):
+            try:
+                parsed = datetime.strptime(s, fmt)
+                if parsed.year == 1900:
+                    parsed = parsed.replace(year=datetime.now(timezone.utc).year)
+                return parsed.replace(tzinfo=timezone.utc)
+            except Exception:
+                continue
+        return None
 
     async def execute(
         self,
@@ -591,6 +658,25 @@ class MockTrelloSearchExecutor(BaseExecutor):
             or parameters.get("list")
             or ""
         ).strip()
+
+        # Date range filtering (From Date - To Date)
+        from_date_raw = (
+            parameters.get("from_date")
+            or parameters.get("start_date")
+            or parameters.get("from")
+            or parameters.get("startDate")
+        )
+        to_date_raw = (
+            parameters.get("to_date")
+            or parameters.get("end_date")
+            or parameters.get("to")
+            or parameters.get("endDate")
+        )
+        from_dt = self._parse_date(from_date_raw) if from_date_raw else None
+        to_dt = self._parse_date(to_date_raw) if to_date_raw else None
+        if to_dt:
+            # Inclusive of the entire end date (up to 23:59:59)
+            to_dt = to_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
 
         def norm_list_name(name: str) -> str:
             cleaned = re.sub(r"[\s\-_]+", "", name.lower())
@@ -658,6 +744,27 @@ class MockTrelloSearchExecutor(BaseExecutor):
                 for c in cards_res.get("cards", []):
                     c_list = list_map.get(c.get("idList"), "To Do")
                     c_norm = norm_list_name(c_list)
+                    is_completed = "done" in c_norm or "completed" in c_norm
+
+                    # Resolve card reference date (due date or creation date from card ObjectId)
+                    card_dt = None
+                    if c.get("due"):
+                        card_dt = self._parse_date(c.get("due"))
+                    if not card_dt and c.get("id") and len(str(c.get("id"))) >= 8:
+                        try:
+                            ts = int(str(c.get("id"))[:8], 16)
+                            card_dt = datetime.fromtimestamp(ts, tz=timezone.utc)
+                        except Exception:
+                            card_dt = None
+
+                    # Filter by date range if provided
+                    if from_dt and card_dt and card_dt < from_dt:
+                        continue
+                    if to_dt and card_dt and card_dt > to_dt:
+                        continue
+                    if (from_dt or to_dt) and not card_dt:
+                        continue
+
                     card_obj = {
                         "id": c.get("id"),
                         "name": c.get("name"),
@@ -666,6 +773,9 @@ class MockTrelloSearchExecutor(BaseExecutor):
                         "list_name": c_list,
                         "url": c.get("url"),
                         "due": c.get("due"),
+                        "is_completed": is_completed,
+                        "status_category": "Completed" if is_completed else "Active",
+                        "card_date": card_dt.isoformat() if card_dt else None,
                     }
                     if target_norm:
                         is_typo = (
@@ -684,21 +794,40 @@ class MockTrelloSearchExecutor(BaseExecutor):
                             continue
                     cards.append(card_obj)
 
-                msg = f"Found {len(cards)} card(s) in '{raw_list_filter}' list on Trello." if target_norm else f"Found {len(cards)} live task cards on Trello."
+                active_count = sum(1 for c in cards if not c.get("is_completed"))
+                completed_count = sum(1 for c in cards if c.get("is_completed"))
+
+                if from_dt or to_dt:
+                    date_range_label = f"from {from_dt.strftime('%d %b %Y') if from_dt else 'earliest'} to {to_dt.strftime('%d %b %Y') if to_dt else 'latest'}"
+                    msg = f"Found {len(cards)} task(s) {date_range_label} on Trello ({active_count} active, {completed_count} completed)."
+                elif target_norm:
+                    msg = f"Found {len(cards)} card(s) in '{raw_list_filter}' list on Trello."
+                else:
+                    msg = f"Found {len(cards)} live task cards on Trello ({active_count} active, {completed_count} completed)."
+
                 return ExecutionResult(
                     tool_id=tool.get("tool_id", "trello_search_cards"),
                     status="SUCCESS",
                     is_mutation=False,
-                    result={"cards": cards, "total": len(cards), "list_name": raw_list_filter if target_norm else None},
+                    result={
+                        "cards": cards,
+                        "total": len(cards),
+                        "active_count": active_count,
+                        "completed_count": completed_count,
+                        "list_name": raw_list_filter if target_norm else None,
+                        "from_date": from_dt.strftime("%Y-%m-%d") if from_dt else None,
+                        "to_date": to_dt.strftime("%Y-%m-%d") if to_dt else None,
+                    },
                     message=msg,
                 )
             except Exception as exc:
                 logger.warning(f"Live Trello search via MCP failed: {exc}")
 
+        now_ref = datetime.now(timezone.utc)
         mock_results = [
-            {"id": "c101", "name": "Login API Integration", "status": "IN_PROGRESS", "list_name": "In Progress", "assignee": "EMP-101"},
-            {"id": "c102", "name": "Database Migration Script", "status": "DONE", "list_name": "Done", "assignee": "EMP-102"},
-            {"id": "c103", "name": "OAuth Google Login Flow", "status": "TODO", "list_name": "To Do", "assignee": "EMP-101"},
+            {"id": "c101", "name": "Login API Integration", "status": "IN_PROGRESS", "list_name": "In Progress", "assignee": "EMP-101", "due": (now_ref).isoformat(), "is_completed": False, "status_category": "Active"},
+            {"id": "c102", "name": "Database Migration Script", "status": "DONE", "list_name": "Done", "assignee": "EMP-102", "due": (now_ref).isoformat(), "is_completed": True, "status_category": "Completed"},
+            {"id": "c103", "name": "OAuth Google Login Flow", "status": "TODO", "list_name": "To Do", "assignee": "EMP-101", "due": (now_ref).isoformat(), "is_completed": False, "status_category": "Active"},
         ]
         filtered = []
         for c in mock_results:
@@ -707,14 +836,33 @@ class MockTrelloSearchExecutor(BaseExecutor):
                 continue
             if query and query not in ("card", "cards", "task", "tasks", "list", "lists", "all") and query not in c["name"].lower():
                 continue
+            card_dt = self._parse_date(c.get("due"))
+            if from_dt and card_dt and card_dt < from_dt:
+                continue
+            if to_dt and card_dt and card_dt > to_dt:
+                continue
             filtered.append(c)
 
-        msg = f"Found {len(filtered)} cards in '{raw_list_filter}' list." if target_norm else f"Found {len(filtered)} cards matching query '{query}'."
+        active_cnt = sum(1 for c in filtered if not c.get("is_completed"))
+        comp_cnt = sum(1 for c in filtered if c.get("is_completed"))
+        if from_dt or to_dt:
+            msg = f"Found {len(filtered)} task(s) within the specified date range ({active_cnt} active, {comp_cnt} completed)."
+        elif target_norm:
+            msg = f"Found {len(filtered)} cards in '{raw_list_filter}' list."
+        else:
+            msg = f"Found {len(filtered)} cards matching query '{query}'."
+
         return ExecutionResult(
             tool_id=tool.get("tool_id", "trello_search_cards"),
             status="SUCCESS",
             is_mutation=False,
-            result={"cards": filtered, "total": len(filtered)},
+            result={
+                "cards": filtered,
+                "total": len(filtered),
+                "active_count": active_cnt,
+                "completed_count": comp_cnt,
+                "list_name": raw_list_filter if target_norm else None,
+            },
             message=msg,
         )
 

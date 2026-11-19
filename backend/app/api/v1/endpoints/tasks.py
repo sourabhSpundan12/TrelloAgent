@@ -1,3 +1,4 @@
+import asyncio
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -6,6 +7,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.core.dependencies import get_current_user
 from app.core.logging import logger
 from app.database.mongodb import get_database
+from app.integrations.trello.client import parse_due_date_for_trello
 from app.mcp_server import trello_tools
 from app.schemas.user import UserResponse
 from app.services.board_service import get_active_board_id
@@ -34,18 +36,60 @@ async def get_trello_tasks(
 
         list_map = {l["id"]: l["name"] for l in lists}
 
+        # Build fallback map of known due dates from platform actions for cards where Trello due is missing
+        executed_due_map: Dict[str, str] = {}
+        try:
+            executed_actions = await db["pending_actions"].find(
+                {"draft.due_date": {"$exists": True, "$ne": None}}
+            ).to_list(100)
+            for act in executed_actions:
+                d = act.get("draft", {})
+                d_due = d.get("due_date")
+                if not d_due:
+                    continue
+                parsed_d_due = parse_due_date_for_trello(d_due)
+                if not parsed_d_due:
+                    continue
+                t_key = (d.get("title") or "").strip().lower()
+                if t_key:
+                    executed_due_map[t_key] = parsed_d_due
+                cid = act.get("card_id")
+                if not cid and isinstance(act.get("execution_result"), dict):
+                    res_inner = act["execution_result"]
+                    if isinstance(res_inner.get("result"), dict):
+                        cid = res_inner["result"].get("card", {}).get("id") or res_inner["result"].get("id")
+                if cid:
+                    executed_due_map[str(cid)] = parsed_d_due
+        except Exception as e:
+            logger.debug(f"Could not query pending_actions for due dates: {e}")
+
         formatted_cards = []
         for c in cards:
             list_name = list_map.get(c.get("idList"), "To Do")
+            card_id = c.get("id")
+            card_name = c.get("name") or ""
+            card_due = c.get("due")
+
+            # If missing from Trello, reconcile with platform action draft
+            if not card_due:
+                matched_due = executed_due_map.get(str(card_id)) or executed_due_map.get(card_name.strip().lower())
+                if matched_due:
+                    card_due = matched_due
+                    try:
+                        client = trello_tools.get_trello_client()
+                        asyncio.create_task(client.update_card(card_id=card_id, due=matched_due))
+                    except Exception as exc:
+                        logger.debug(f"Async Trello due date sync skipped: {exc}")
+
             formatted_cards.append({
-                "id": c.get("id"),
-                "name": c.get("name"),
+                "id": card_id,
+                "name": card_name,
                 "desc": c.get("desc") or "",
                 "list_id": c.get("idList"),
                 "list_name": list_name,
                 "url": c.get("url"),
                 "short_url": c.get("shortUrl"),
-                "due": c.get("due"),
+                "due": card_due,
                 "closed": c.get("closed", False),
                 "members": c.get("idMembers", []),
             })
@@ -277,4 +321,25 @@ async def get_team_workload(
             "members": [],
             "error": str(e),
         }
+
+
+@router.post(
+    "/reminders/check",
+    status_code=status.HTTP_200_OK,
+    summary="Trigger 3-stage deadline reminder checks for assigned members",
+    description="Evaluates pending tasks for 1 day, 4 hours, and 1 hour deadlines, issuing email and in-app alerts.",
+)
+async def trigger_deadline_reminders(
+    board_id: Optional[str] = Query(None, description="Optional target Trello board ID"),
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> Dict[str, Any]:
+    from app.services.reminder_service import TaskReminderService
+    service = TaskReminderService()
+    reminders = await service.scan_and_generate_reminders(db, current_user=current_user, board_id=board_id)
+    return {
+        "status": "SUCCESS",
+        "reminders_dispatched": len(reminders),
+        "reminders": reminders,
+    }
 

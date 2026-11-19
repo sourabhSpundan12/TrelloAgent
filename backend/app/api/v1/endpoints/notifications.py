@@ -4,8 +4,10 @@ from fastapi import APIRouter, Depends, Query, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
 from app.core.dependencies import get_current_user
+from app.core.logging import logger
 from app.database.mongodb import get_database
 from app.schemas.user import UserResponse
+from app.services.reminder_service import TaskReminderService
 
 router = APIRouter()
 
@@ -118,6 +120,24 @@ async def get_notifications(
             "target_tab": target_tab,
             "priority": draft.get("priority", "MEDIUM"),
         })
+
+    # 3. Dynamic Deadline Reminders: 1 Day, 4 Hours, 1 Hour left alerts for assigned members
+    try:
+        reminder_service = TaskReminderService()
+        await reminder_service.scan_and_generate_reminders(db, current_user=current_user)
+        user_reminders = await reminder_service.get_user_reminders_for_notifications(
+            db, user_id=str(current_user.id), limit=limit
+        )
+        for rem in user_reminders:
+            r_id = rem["id"]
+            is_r_read = r_id in read_ids
+            rem["is_read"] = is_r_read
+            notifications.append(rem)
+    except Exception as e:
+        logger.warning(f"Could not process deadline reminders in notifications: {e}")
+
+    # Sort combined notifications by created_at descending
+    notifications.sort(key=lambda x: str(x.get("created_at", "")), reverse=True)
 
     unread_count = sum(1 for n in notifications if not n["is_read"])
 

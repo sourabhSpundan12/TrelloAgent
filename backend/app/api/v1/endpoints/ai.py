@@ -268,6 +268,7 @@ async def interpret_user_command(
                 conversational_message=asst_content,
                 conversation_id=conv_id,
                 board_id=active_board_id,
+                model_id=payload.model_id or "gemini-1.5-flash",
             )
         except Exception as e:
             logger.error(f"Conversational confirmation failed: {e}")
@@ -283,6 +284,7 @@ async def interpret_user_command(
                 conversational_message=error_content,
                 conversation_id=conv_id,
                 board_id=active_board_id,
+                model_id=payload.model_id or "gemini-1.5-flash",
             )
 
     # --------------------------------------------------------------------------
@@ -334,6 +336,7 @@ async def interpret_user_command(
             conversational_message=asst_content,
             conversation_id=conv_id,
             board_id=active_board_id,
+            model_id=payload.model_id or "gemini-1.5-flash",
         )
 
     # --------------------------------------------------------------------------
@@ -432,6 +435,7 @@ async def interpret_user_command(
             conversational_message=asst_content,
             conversation_id=conv_id,
             board_id=active_board_id,
+            model_id=payload.model_id or "gemini-1.5-flash",
         )
 
     # --------------------------------------------------------------------------
@@ -453,6 +457,7 @@ async def interpret_user_command(
         discovered_tools=discovered_tools,
         conversation_history=prev_history,
         correlation_id=req_id,
+        model_id=payload.model_id,
     )
 
     selected_tool = None
@@ -526,6 +531,14 @@ async def interpret_user_command(
             action_type = "MOVE_CARD"
         elif tool_id == "trello_update_card" or intent_output.intent in ["update_card", "assign_member"]:
             action_type = "UPDATE_CARD"
+        elif (
+            intent_output.intent == "delete_list_cards"
+            or params.get("is_bulk_delete")
+            or ("all" in cmd.lower() and any(w in cmd.lower() for w in ["task", "tasks", "card", "cards"]) and any(w in cmd.lower() for w in ["delete", "archive", "remove", "clear"]))
+        ):
+            action_type = "DELETE_LIST_CARDS"
+            params["is_bulk_delete"] = True
+            params["action_type"] = "DELETE_LIST_CARDS"
         elif tool_id in ["trello_delete_card", "trello_archive_card"] or intent_output.intent in ["delete_card", "archive_card"]:
             action_type = "ARCHIVE_CARD"
 
@@ -561,6 +574,13 @@ async def interpret_user_command(
                 f"I have prepared a draft to set due date '{resolved_due}' on '{draft_response.draft.title}'. "
                 "Please review the preview below and confirm to execute it on Trello."
             )
+        elif action_type == "DELETE_LIST_CARDS":
+            cards_count = draft_response.draft.parameters.get("cards_count", 0)
+            target_list_name = draft_response.draft.list_name
+            conversational_message = (
+                f"I found {cards_count} task(s) in '{target_list_name}' list on Trello. "
+                "Please review the deletion preview below and confirm to delete all tasks, or reject to cancel."
+            )
         elif action_type in ("ARCHIVE_CARD", "DELETE_CARD"):
             conversational_message = (
                 f"I have prepared a draft to delete '{draft_response.draft.title}' on your Trello board. "
@@ -595,21 +615,36 @@ async def interpret_user_command(
             # Craft helpful conversational response
             if selected_tool.tool_id == "trello_search_cards":
                 cards = (execution_result_data or {}).get("cards", [])
-                list_spec = (
-                    intent_output.parameters.get("list_name")
-                    or intent_output.parameters.get("status")
-                    or intent_output.parameters.get("list")
-                    or (execution_result_data or {}).get("list_name")
-                )
-                if list_spec:
+                from_date_val = (execution_result_data or {}).get("from_date") or intent_output.parameters.get("from_date") or intent_output.parameters.get("start_date")
+                to_date_val = (execution_result_data or {}).get("to_date") or intent_output.parameters.get("to_date") or intent_output.parameters.get("end_date")
+                active_count = (execution_result_data or {}).get("active_count", len([c for c in cards if not c.get("is_completed")]))
+                completed_count = (execution_result_data or {}).get("completed_count", len([c for c in cards if c.get("is_completed")]))
+
+                if from_date_val or to_date_val:
+                    range_str = f"between {from_date_val or 'earliest'} and {to_date_val or 'latest'}"
                     if cards:
-                        conversational_message = f"I found {len(cards)} card(s) in the '{list_spec}' list on your Trello board:"
+                        conversational_message = (
+                            f"I found {len(cards)} task(s) {range_str} on your Trello board "
+                            f"({active_count} active, {completed_count} completed):"
+                        )
                     else:
-                        conversational_message = f"No cards were found in the '{list_spec}' list on your Trello board."
-                elif cards:
-                    conversational_message = f"I found {len(cards)} matching card(s) on your Trello board:"
+                        conversational_message = f"No task cards were found {range_str} on your Trello board."
                 else:
-                    conversational_message = "No matching task cards were found on your Trello board."
+                    list_spec = (
+                        intent_output.parameters.get("list_name")
+                        or intent_output.parameters.get("status")
+                        or intent_output.parameters.get("list")
+                        or (execution_result_data or {}).get("list_name")
+                    )
+                    if list_spec:
+                        if cards:
+                            conversational_message = f"I found {len(cards)} card(s) in the '{list_spec}' list on your Trello board:"
+                        else:
+                            conversational_message = f"No cards were found in the '{list_spec}' list on your Trello board."
+                    elif cards:
+                        conversational_message = f"I found {len(cards)} matching card(s) on your Trello board:"
+                    else:
+                        conversational_message = "No matching task cards were found on your Trello board."
             elif selected_tool.tool_id == "report_get_workload":
                 summary = (execution_result_data or {}).get("summary", {})
                 conversational_message = (
@@ -642,6 +677,7 @@ async def interpret_user_command(
         "conversation_id": conv_id,
         "board_id": active_board_id,
         "sender": "assistant",
+        "model_id": payload.model_id or "gemini-1.5-flash",
         "content": conversational_message,
         "timestamp": now_str,
         "created_at": now_dt,
@@ -680,4 +716,5 @@ async def interpret_user_command(
         conversational_message=conversational_message,
         conversation_id=conv_id,
         board_id=active_board_id,
+        model_id=payload.model_id or "gemini-1.5-flash",
     )

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Search,
   Bell,
   Sun,
   Moon,
@@ -8,7 +7,6 @@ import {
   User,
   Shield,
   LogOut,
-  Command,
   CheckCircle2,
   Clock,
   AlertCircle,
@@ -23,13 +21,13 @@ import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useBoard } from '../../context/BoardContext';
 import { Button } from '../common/Button';
+import { BoardSelectorDropdown } from '../common/BoardSelectorDropdown';
 import { NotificationItem } from '../../types';
 import { fetchNotifications, markNotificationsRead } from '../../services/api';
 
 interface TopNavbarProps {
   currentTab: string;
   onTabChange?: (tabId: string) => void;
-  onSearchClick?: () => void;
   onToggleMobileSidebar?: () => void;
 }
 
@@ -174,31 +172,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ currentTab, onTabChange, o
             <h2 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white tracking-tight truncate">
               {currentMeta.title}
             </h2>
-            {activeBoard && (
-              <span
-                title={`Active Trello Board: ${activeBoard.name} (${activeBoard.board_id})`}
-                className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 max-w-[140px] md:max-w-[200px] truncate"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 shrink-0" />
-                <span className="truncate">{activeBoard.name}</span>
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Center Global Search UI */}
-      <div className="hidden md:flex items-center flex-1 max-w-md mx-8">
-        <div className="relative w-full">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search tasks, tools, employees or commands..."
-            className="w-full bg-slate-100 dark:bg-slate-800/70 border border-transparent dark:border-slate-700/60 rounded-xl pl-9 pr-12 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-brand-500/50 focus:bg-white dark:focus:bg-slate-800 transition"
-          />
-          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center space-x-0.5 text-[10px] text-slate-400 bg-white dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600">
-            <Command className="w-2.5 h-2.5" />
-            <span>K</span>
+            <BoardSelectorDropdown onNavigateToBoards={() => onTabChange?.('boards')} />
           </div>
         </div>
       </div>
@@ -336,6 +310,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ currentTab, onTabChange, o
                       const isExecuted = notif.type === 'ACTION_EXECUTED';
                       const isFailed = notif.type === 'ACTION_FAILED';
                       const isCancelled = notif.type === 'ACTION_CANCELLED';
+                      const isReminder = notif.type === 'DEADLINE_REMINDER';
 
                       return (
                         <div
@@ -344,12 +319,24 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ currentTab, onTabChange, o
                           className={`p-3 rounded-xl border transition-all duration-150 cursor-pointer flex items-start space-x-3 relative group ${
                             notif.is_read
                               ? 'bg-slate-50/70 dark:bg-slate-800/50 border-slate-200/80 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                              : isReminder
+                              ? 'bg-amber-50/40 dark:bg-amber-500/10 border-amber-500/40 dark:border-amber-500/40 shadow-xs hover:border-amber-500'
                               : 'bg-white dark:bg-slate-800/90 border-emerald-500/40 dark:border-emerald-500/40 shadow-xs hover:border-emerald-500'
                           }`}
                         >
                           {/* Icon Container */}
                           <div className="mt-0.5 shrink-0">
-                            {isPending ? (
+                            {isReminder ? (
+                              <div className={`p-2 rounded-xl border ${
+                                notif.priority === 'URGENT'
+                                  ? 'bg-rose-500/15 text-rose-500 border-rose-500/30'
+                                  : notif.priority === 'HIGH'
+                                  ? 'bg-amber-500/15 text-amber-500 border-amber-500/30'
+                                  : 'bg-orange-500/10 text-orange-500 border-orange-500/25'
+                              }`}>
+                                <Clock className="w-4 h-4" />
+                              </div>
+                            ) : isPending ? (
                               <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/25">
                                 <Clock className="w-4 h-4" />
                               </div>
@@ -375,15 +362,22 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ currentTab, onTabChange, o
                           {/* Content */}
                           <div className="flex-1 min-w-0 text-xs">
                             <div className="flex items-center justify-between gap-1.5">
-                              <span
-                                className={`truncate font-semibold ${
-                                  notif.is_read
-                                    ? 'text-slate-700 dark:text-slate-200'
-                                    : 'text-slate-900 dark:text-white font-bold'
-                                }`}
-                              >
-                                {notif.title}
-                              </span>
+                              <div className="flex items-center space-x-1.5 truncate">
+                                <span
+                                  className={`truncate font-semibold ${
+                                    notif.is_read
+                                      ? 'text-slate-700 dark:text-slate-200'
+                                      : 'text-slate-900 dark:text-white font-bold'
+                                  }`}
+                                >
+                                  {notif.title}
+                                </span>
+                                {isReminder && (
+                                  <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono font-semibold bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/25 shrink-0">
+                                    {notif.stage_label || 'Reminder'}
+                                  </span>
+                                )}
+                              </div>
                               <div className="flex items-center space-x-1.5 shrink-0">
                                 <span className="text-[10px] text-slate-400 font-mono">
                                   {formatTimeAgo(notif.created_at)}

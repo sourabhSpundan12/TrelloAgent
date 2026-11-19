@@ -19,19 +19,31 @@ class ProviderConfig(BaseModel):
     max_tokens: Optional[int] = None
 
     @classmethod
-    def from_settings(cls, provider_type: Optional[str] = None) -> "ProviderConfig":
+    def from_settings(
+        cls,
+        provider_type: Optional[str] = None,
+        model_name: Optional[str] = None,
+    ) -> "ProviderConfig":
         prov_str = (provider_type or getattr(settings, "LLM_PROVIDER", "google")).lower().strip()
         
+        # If model_name indicates provider (e.g. gpt-* -> openai)
+        if model_name:
+            if model_name.startswith("gpt-"):
+                prov_str = "openai"
+            elif model_name.startswith("gemini-"):
+                prov_str = "google"
+
         if prov_str in ("google", "gemini"):
             api_key = getattr(settings, "GEMINI_API_KEY", "") or None
-            model_name = (
-                getattr(settings, "LLM_MODEL", None)
+            resolved_model = (
+                model_name
+                or getattr(settings, "LLM_MODEL", None)
                 or getattr(settings, "GEMINI_MODEL", None)
-                or "gemini-3.5-flash-lite"
+                or "gemini-1.5-flash"
             )
             return cls(
                 provider=LLMProviderType.GOOGLE,
-                model_name=model_name,
+                model_name=resolved_model,
                 api_key=api_key,
                 temperature=getattr(settings, "LLM_TEMPERATURE", 0.1),
                 timeout=getattr(settings, "LLM_TIMEOUT", 60),
@@ -39,10 +51,10 @@ class ProviderConfig(BaseModel):
             )
         elif prov_str == "openai":
             api_key = getattr(settings, "OPENAI_API_KEY", "") or None
-            model_name = getattr(settings, "LLM_MODEL", None) or "gpt-4o-mini"
+            resolved_model = model_name or getattr(settings, "LLM_MODEL", None) or "gpt-4o-mini"
             return cls(
                 provider=LLMProviderType.OPENAI,
-                model_name=model_name,
+                model_name=resolved_model,
                 api_key=api_key,
                 temperature=getattr(settings, "LLM_TEMPERATURE", 0.1),
                 timeout=getattr(settings, "LLM_TIMEOUT", 60),
