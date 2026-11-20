@@ -119,16 +119,91 @@ api.interceptors.request.use((config) => {
 });
 
 /**
+ * Silent token refresher helper:
+ * Exchanges rotating refresh token for a new access token.
+ */
+export const silentRefreshToken = async (): Promise<string | null> => {
+  const rToken = localStorage.getItem('refresh_token');
+  if (!rToken) return null;
+  try {
+    const baseURL = import.meta.env.VITE_API_BASE_URL || '';
+    const res = await axios.post<AuthTokenResponse>(
+      `${baseURL}/api/v1/auth/refresh`,
+      { refresh_token: rToken },
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    if (res.data?.access_token) {
+      setStoredTokens(res.data.access_token, res.data.refresh_token);
+      return res.data.access_token;
+    }
+  } catch (err) {
+    console.warn('Silent token refresh failed:', err);
+  }
+  return null;
+};
+
+// Queue for holding requests while token refresh is in flight
+let isRefreshingToken = false;
+let refreshSubscribers: Array<(token: string) => void> = [];
+
+const subscribeTokenRefresh = (cb: (token: string) => void) => {
+  refreshSubscribers.push(cb);
+};
+
+const onTokenRefreshed = (token: string) => {
+  refreshSubscribers.forEach((cb) => cb(token));
+  refreshSubscribers = [];
+};
+
+/**
  * Axios Response Interceptor:
- * Broadcasts an event when 401 Unauthorized occurs so UI can update state cleanly.
+ * Automatically refreshes expired access tokens using the refresh token so
+ * employees are never logged out unexpectedly during their workday.
+ * Only logs out when credentials are completely invalid or employee explicitly logs out.
  */
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    const isExcludedFromAuthExpired =
-      error.config?.url?.includes('/auth/login') ||
-      error.config?.url?.includes('/auth/change-password');
-    if (error.response?.status === 401 && !isExcludedFromAuthExpired) {
+  async (error) => {
+    const originalRequest = error.config;
+    const isExcluded =
+      !originalRequest ||
+      originalRequest.url?.includes('/auth/login') ||
+      originalRequest.url?.includes('/auth/refresh') ||
+      originalRequest.url?.includes('/auth/register') ||
+      originalRequest.url?.includes('/auth/forgot-password') ||
+      originalRequest.url?.includes('/auth/reset-password');
+
+    if (error.response?.status === 401 && !isExcluded && !originalRequest._retry) {
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (refreshToken) {
+        if (isRefreshingToken) {
+          return new Promise((resolve) => {
+            subscribeTokenRefresh((newToken: string) => {
+              originalRequest.headers.Authorization = `Bearer ${newToken}`;
+              resolve(api(originalRequest));
+            });
+          });
+        }
+
+        originalRequest._retry = true;
+        isRefreshingToken = true;
+
+        try {
+          const newToken = await silentRefreshToken();
+          isRefreshingToken = false;
+          if (newToken) {
+            onTokenRefreshed(newToken);
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            return api(originalRequest);
+          }
+        } catch (refreshErr) {
+          isRefreshingToken = false;
+          refreshSubscribers = [];
+        }
+      }
+
+      // If token refresh wasn't possible or failed, broadcast auth expired
+      clearStoredTokens();
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('atm:auth-expired', { detail: error.response?.data }));
       }

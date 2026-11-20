@@ -320,11 +320,16 @@ class MockTrelloMoveCardExecutor(BaseExecutor):
                             break
 
                 if card_id and list_id:
+                    # Preserve existing description on card move unless user explicitly provided a new description
+                    raw_desc = parameters.get("desc") or parameters.get("description")
+                    if raw_desc and str(raw_desc).lower().startswith("move card"):
+                        raw_desc = None
+
                     move_res = await trello_tools.trello_move_card(
                         card_id=card_id,
                         list_id=list_id,
                         due_date=parameters.get("due_date") or parameters.get("due"),
-                        desc=parameters.get("desc") or parameters.get("description"),
+                        desc=raw_desc,
                         board_id=parameters.get("board_id") or settings.TRELLO_BOARD_ID or None,
                     )
                     if move_res.get("status") == "SUCCESS":

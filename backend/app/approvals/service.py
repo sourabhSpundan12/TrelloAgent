@@ -224,10 +224,40 @@ class ApprovalService:
             description = f"Create new column/list '{title}' on the board."
         elif action_type == "MOVE_CARD":
             raw_desc = parameters.get("desc") or parameters.get("description")
-            if raw_desc and "task created via agentic assistant" not in str(raw_desc).lower() and str(raw_desc).strip() != "":
+            has_explicit_desc = bool(
+                raw_desc
+                and "task created via agentic assistant" not in str(raw_desc).lower()
+                and not str(raw_desc).lower().startswith("move card")
+                and str(raw_desc).strip() != ""
+            )
+            if has_explicit_desc:
                 description = str(raw_desc).strip()
             else:
-                description = f"Move card '{title}' to {list_name}."
+                # User did not provide a new description: retain existing card description
+                existing_card_desc = None
+                try:
+                    from app.mcp_server import trello_tools
+                    cards_res = await trello_tools.trello_list_cards(board_id=target_board_id)
+                    title_norm = title.lower().strip()
+                    for c in cards_res.get("cards", []):
+                        c_name = c.get("name", "").lower().strip()
+                        if c_name == title_norm or title_norm in c_name:
+                            existing_card_desc = c.get("desc")
+                            break
+                except Exception:
+                    pass
+
+                if not existing_card_desc and self.db is not None:
+                    try:
+                        t_doc = await self.db["task_assignments"].find_one(
+                            {"task_title": {"$regex": f"^{re.escape(title)}$", "$options": "i"}}
+                        )
+                        if t_doc and t_doc.get("task_description"):
+                            existing_card_desc = t_doc["task_description"]
+                    except Exception:
+                        pass
+
+                description = existing_card_desc.strip() if existing_card_desc else ""
         elif action_type == "UPDATE_CARD":
             raw_desc = parameters.get("desc") or parameters.get("description") or parameters.get("new_description")
             member_name = parameters.get("member_name") or parameters.get("assignee")
@@ -289,8 +319,12 @@ class ApprovalService:
             exec_params["desc"] = description
             if parameters.get("member_name"):
                 exec_params["member_name"] = parameters.get("member_name")
-        elif action_type == "MOVE_CARD" and (parameters.get("desc") or parameters.get("description")):
-            exec_params["desc"] = description
+        elif action_type == "MOVE_CARD":
+            if has_explicit_desc:
+                exec_params["desc"] = description
+            else:
+                exec_params.pop("desc", None)
+                exec_params.pop("description", None)
         elif action_type == "UPDATE_CARD":
             if parameters.get("desc") or parameters.get("description") or parameters.get("new_description"):
                 exec_params["desc"] = parameters.get("desc") or parameters.get("description") or parameters.get("new_description")

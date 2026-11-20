@@ -352,7 +352,6 @@ export const EmployeesPage: React.FC = () => {
     setSelectedEmployee(emp);
     setSelectedEmployeeId(targetId);
     setActiveTab('details');
-    loadSelectedAssignments(targetId);
   };
 
   // Selected summary record

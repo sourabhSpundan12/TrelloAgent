@@ -109,6 +109,7 @@ class TaskAssignmentService:
         }
 
         res = await db["task_assignments"].insert_one(assignment_doc)
+        cls.invalidate_reconcile_cache()
         assignment_id = str(res.inserted_id)
         assignment_doc["_id"] = str(res.inserted_id)
         assignment_doc["id"] = assignment_id
@@ -213,6 +214,7 @@ class TaskAssignmentService:
             {"_id": assignment["_id"]},
             {"$set": update_fields}
         )
+        cls.invalidate_reconcile_cache()
 
         # Record history
         await db["task_assignment_history"].insert_one({
@@ -294,6 +296,7 @@ class TaskAssignmentService:
             {"_id": assignment["_id"]},
             {"$set": update_fields}
         )
+        cls.invalidate_reconcile_cache()
 
         await db["task_assignment_history"].insert_one({
             "assignment_id": str(assignment["_id"]),
@@ -379,6 +382,7 @@ class TaskAssignmentService:
             {"_id": assignment["_id"]},
             {"$set": update_fields}
         )
+        cls.invalidate_reconcile_cache()
 
         await db["task_assignment_history"].insert_one({
             "assignment_id": str(assignment["_id"]),
@@ -410,11 +414,18 @@ class TaskAssignmentService:
 
         return assignment
 
+    _last_reconciled: Dict[str, float] = {}
+
+    @classmethod
+    def invalidate_reconcile_cache(cls) -> None:
+        cls._last_reconciled.clear()
+
     @classmethod
     async def reconcile_board_cards(
         cls,
         db: AsyncIOMotorDatabase,
         board_id: Optional[str] = None,
+        force: bool = False,
     ) -> None:
         """
         Reconciles live Trello board cards into task_assignments so existing cards,
@@ -422,10 +433,17 @@ class TaskAssignmentService:
         for performance calculation.
         """
         try:
+            import time
             from app.services.board_service import get_active_board_id
             from app.mcp_server import trello_tools
 
             active_board_id = await get_active_board_id(db, board_id)
+            board_key = str(active_board_id or "default")
+            now_ts = time.time()
+            if not force and (now_ts - cls._last_reconciled.get(board_key, 0)) < 15.0:
+                return
+            cls._last_reconciled[board_key] = now_ts
+
             cards_res = await trello_tools.trello_list_cards(board_id=active_board_id)
             lists_res = await trello_tools.trello_list_lists(board_id=active_board_id)
             members_res = await trello_tools.trello_list_board_members(board_id=active_board_id)

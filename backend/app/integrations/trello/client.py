@@ -538,7 +538,7 @@ class TrelloClient:
             parsed_due = parse_due_date_for_trello(due)
             if parsed_due:
                 params["due"] = parsed_due
-        if desc is not None:
+        if desc is not None and not str(desc).lower().startswith("move card"):
             params["desc"] = desc.strip()
 
         c = await self._request("PUT", f"/cards/{card_id.strip()}", params=params)
