@@ -20,7 +20,10 @@ import {
   Edit3,
   Mail,
   User,
+  Download,
+  FileSpreadsheet,
 } from 'lucide-react';
+import { exportToExcel } from '../utils/excelExport';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
@@ -533,6 +536,50 @@ export const EmployeesPage: React.FC = () => {
     }
   };
 
+  const handleExportEmployeeExcel = () => {
+    if (!employeeAssignments || employeeAssignments.length === 0) return;
+    const empName = selectedEmployee?.name || 'Employee';
+    const cleanEmpName = empName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    const filename = `PM_Hooks_${cleanEmpName}_Tasks_${dateStamp}.xlsx`;
+
+    const headers = [
+      'Task Title',
+      'Trello Card URL',
+      'Board Name',
+      'Assigned Date',
+      'Due Date',
+      'Time Remaining',
+      'Status',
+      'Estimated Duration',
+      'Actual Duration',
+      'Variance',
+      'Deadline Status',
+    ];
+
+    const rows = employeeAssignments.map((task) => [
+      task.task_title || 'Untitled Task',
+      task.trello_card_url || '—',
+      task.board_name || activeBoard?.name || 'Primary Trello Board',
+      task.assigned_at ? new Date(task.assigned_at).toLocaleString() : '—',
+      task.due_date ? new Date(task.due_date).toLocaleString() : '—',
+      formatTimeRemaining(task.time_remaining_minutes, task.is_overdue, task.status) || '—',
+      (task.status || 'ASSIGNED').toUpperCase(),
+      task.estimated_duration_minutes !== undefined && task.estimated_duration_minutes !== null
+        ? `${Math.round((task.estimated_duration_minutes / 60) * 10) / 10}h`
+        : '—',
+      task.actual_duration_minutes !== undefined && task.actual_duration_minutes !== null
+        ? `${Math.round((task.actual_duration_minutes / 60) * 10) / 10}h`
+        : '—',
+      task.time_variance_minutes !== undefined && task.time_variance_minutes !== null
+        ? `${task.time_variance_minutes}m`
+        : '—',
+      task.is_overdue ? 'OVERDUE' : 'ON TIME',
+    ]);
+
+    exportToExcel(headers, rows, filename, `${cleanEmpName.slice(0, 28)} Tasks`);
+  };
+
   return (
     <div className="space-y-6">
       {/* Notifications / Alerts banner */}
@@ -1020,7 +1067,7 @@ export const EmployeesPage: React.FC = () => {
 
           {/* Assigned Tasks Table */}
           <Card className="overflow-hidden border border-slate-200 dark:border-slate-800">
-            <div className="p-4 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center space-x-2">
                   <span>Assigned Task Table</span>
@@ -1031,6 +1078,19 @@ export const EmployeesPage: React.FC = () => {
                 <p className="text-[11px] text-slate-500 mt-0.5">
                   Real-time estimated vs actual duration analysis, time variance calculation, and dual due-date control.
                 </p>
+              </div>
+
+              <div className="flex items-center space-x-2 shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportEmployeeExcel}
+                  disabled={employeeAssignments.length === 0}
+                  icon={<FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />}
+                  title="Export filtered assigned tasks to Excel (.xlsx)"
+                >
+                  Download Excel (.xlsx)
+                </Button>
               </div>
             </div>
 

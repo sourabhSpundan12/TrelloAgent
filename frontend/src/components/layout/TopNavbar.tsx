@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Bell,
   Sun,
@@ -13,6 +13,8 @@ import {
   XCircle,
   ExternalLink,
   CheckCheck,
+  Check,
+  Trash2,
   Inbox,
   Loader2,
   Menu,
@@ -23,7 +25,7 @@ import { useBoard } from '../../context/BoardContext';
 import { Button } from '../common/Button';
 import { BoardSelectorDropdown } from '../common/BoardSelectorDropdown';
 import { NotificationItem } from '../../types';
-import { fetchNotifications, markNotificationsRead } from '../../services/api';
+import { fetchNotifications, markNotificationsRead, deleteNotificationApi } from '../../services/api';
 
 interface TopNavbarProps {
   currentTab: string;
@@ -41,6 +43,44 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ currentTab, onTabChange, o
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState<boolean>(false);
+
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  // Global click outside listener across the entire window
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (
+        notificationsOpen &&
+        notificationsRef.current &&
+        !notificationsRef.current.contains(target)
+      ) {
+        setNotificationsOpen(false);
+      }
+      if (
+        profileOpen &&
+        profileRef.current &&
+        !profileRef.current.contains(target)
+      ) {
+        setProfileOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setNotificationsOpen(false);
+        setProfileOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [notificationsOpen, profileOpen]);
 
   const parseAsUtcDate = (dateVal?: string | Date): Date | null => {
     if (!dateVal) return null;
@@ -112,6 +152,44 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ currentTab, onTabChange, o
       setUnreadCount(0);
     } catch (err) {
       console.error('Failed to mark all as read:', err);
+    }
+  };
+
+  const handleMarkSingleRead = async (e: React.MouseEvent, notif: NotificationItem) => {
+    e.stopPropagation();
+    if (notif.is_read) return;
+    try {
+      await markNotificationsRead(notif.id, false);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notif.id ? { ...n, is_read: true } : n))
+      );
+      setUnreadCount((c) => Math.max(0, c - 1));
+    } catch (err) {
+      console.error('Failed to mark notification as read:', err);
+    }
+  };
+
+  const handleDeleteNotification = async (e: React.MouseEvent, notifId: string) => {
+    e.stopPropagation();
+    try {
+      await deleteNotificationApi(notifId, false);
+      const target = notifications.find((n) => n.id === notifId);
+      setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+      if (target && !target.is_read) {
+        setUnreadCount((c) => Math.max(0, c - 1));
+      }
+    } catch (err) {
+      console.error('Failed to delete notification:', err);
+    }
+  };
+
+  const handleClearAllNotifications = async () => {
+    try {
+      await deleteNotificationApi(undefined, true);
+      setNotifications([]);
+      setUnreadCount(0);
+    } catch (err) {
+      console.error('Failed to clear all notifications:', err);
     }
   };
 
@@ -189,7 +267,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ currentTab, onTabChange, o
         </button>
 
         {/* Notifications Icon & Popover */}
-        <div className="relative">
+        <div ref={notificationsRef} className="relative">
           <button
             type="button"
             onClick={() => {
@@ -209,9 +287,9 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ currentTab, onTabChange, o
 
           {notificationsOpen && (
             <>
-              {/* Click-outside backdrop */}
+              {/* Click-outside backdrop for mobile */}
               <div
-                className="fixed inset-0 z-40 bg-black/20 dark:bg-black/40 backdrop-blur-2xs"
+                className="fixed inset-0 z-40 bg-black/10 dark:bg-black/30 md:hidden"
                 onClick={() => setNotificationsOpen(false)}
               />
 
@@ -236,17 +314,30 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ currentTab, onTabChange, o
                     )}
                   </div>
 
-                  {unreadCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleMarkAllRead}
-                      className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 hover:bg-emerald-500/10 border border-transparent hover:border-emerald-500/20 transition whitespace-nowrap"
-                      title="Mark all notifications as read"
-                    >
-                      <CheckCheck className="w-3.5 h-3.5" />
-                      <span>Mark all read</span>
-                    </button>
-                  )}
+                  <div className="flex items-center space-x-1.5">
+                    {unreadCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleMarkAllRead}
+                        className="inline-flex items-center space-x-1 px-2 py-1 rounded-lg text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 hover:bg-emerald-500/10 border border-transparent hover:border-emerald-500/20 transition whitespace-nowrap"
+                        title="Mark all notifications as read"
+                      >
+                        <CheckCheck className="w-3.5 h-3.5" />
+                        <span>Mark all read</span>
+                      </button>
+                    )}
+                    {notifications.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearAllNotifications}
+                        className="inline-flex items-center space-x-1 px-2 py-1 rounded-lg text-[11px] font-medium text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition whitespace-nowrap"
+                        title="Clear all notifications permanently"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Clear all</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Filter Tabs */}
@@ -378,12 +469,30 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ currentTab, onTabChange, o
                                   </span>
                                 )}
                               </div>
-                              <div className="flex items-center space-x-1.5 shrink-0">
-                                <span className="text-[10px] text-slate-400 font-mono">
+                              <div className="flex items-center space-x-1 shrink-0">
+                                <span className="text-[10px] text-slate-400 font-mono mr-1">
                                   {formatTimeAgo(notif.created_at)}
                                 </span>
                                 {!notif.is_read && (
-                                  <span className="relative flex h-2 w-2">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleMarkSingleRead(e, notif)}
+                                    className="p-1 rounded text-slate-400 hover:text-emerald-500 hover:bg-emerald-500/10 transition"
+                                    title="Mark as read"
+                                  >
+                                    <Check className="w-3 h-3" />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleDeleteNotification(e, notif.id)}
+                                  className="p-1 rounded text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition"
+                                  title="Delete notification"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                                {!notif.is_read && (
+                                  <span className="relative flex h-2 w-2 ml-0.5">
                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                                     <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                                   </span>
@@ -448,7 +557,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ currentTab, onTabChange, o
 
         {/* User Profile / Auth Action */}
         {isAuthenticated && user ? (
-          <div className="relative">
+          <div ref={profileRef} className="relative">
             <button
               onClick={() => {
                 setProfileOpen(!profileOpen);

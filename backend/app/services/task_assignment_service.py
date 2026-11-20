@@ -130,6 +130,27 @@ class TaskAssignmentService:
             "timestamp": now,
         })
 
+        try:
+            from app.services.activity_service import ActivityService
+            await ActivityService.log_activity(
+                db=db,
+                event_type="TASK_ASSIGNED",
+                title=f"Task '{task_title}' assigned to {employee_name or 'Team Member'}",
+                description=f"Assigned by Project Manager. Due date: {due_date.isoformat() if due_date else 'No deadline'}.",
+                user_email=employee_email or "employee@enterprise.com",
+                user_name=employee_name or "Team Member",
+                user_id=employee_id,
+                status="EXECUTED",
+                tool_name="Task Assignment Engine",
+                card_id=trello_card_id,
+                card_title=task_title,
+                card_url=trello_card_url,
+                board_id=board_id,
+                board_name=board_name,
+            )
+        except Exception:
+            pass
+
         return assignment_doc
 
     @classmethod
@@ -232,6 +253,25 @@ class TaskAssignmentService:
             "timestamp": now,
         })
 
+        try:
+            from app.services.activity_service import ActivityService
+            await ActivityService.log_activity(
+                db=db,
+                event_type="DUE_DATE_UPDATED",
+                title=f"Due date updated for '{assignment.get('task_title', 'Task')}'",
+                description=f"Deadline updated to {new_due_date.isoformat() if new_due_date else 'None'}. Reason: {reason or 'Schedule adjustment'}.",
+                user_email=assignment.get("employee_email") or "employee@enterprise.com",
+                user_name=assignment.get("employee_name") or "Team Member",
+                status="EXECUTED",
+                tool_name="Due Date Manager",
+                card_id=assignment.get("trello_card_id"),
+                card_title=assignment.get("task_title"),
+                card_url=assignment.get("trello_card_url"),
+                board_name=assignment.get("board_name"),
+            )
+        except Exception:
+            pass
+
         assignment.update(update_fields)
         assignment["id"] = str(assignment["_id"])
         return assignment
@@ -312,6 +352,25 @@ class TaskAssignmentService:
             "reason": "Task started by employee",
             "timestamp": now,
         })
+
+        try:
+            from app.services.activity_service import ActivityService
+            await ActivityService.log_activity(
+                db=db,
+                event_type="TASK_STARTED",
+                title=f"Work started on '{assignment.get('task_title', 'Task')}'",
+                description=f"Task transitioned to IN_PROGRESS by {assignment.get('employee_name', 'Employee')}.",
+                user_email=assignment.get("employee_email") or "employee@enterprise.com",
+                user_name=assignment.get("employee_name") or "Employee",
+                status="IN_PROGRESS",
+                tool_name="Task Execution",
+                card_id=assignment.get("trello_card_id"),
+                card_title=assignment.get("task_title"),
+                card_url=assignment.get("trello_card_url"),
+                board_name=assignment.get("board_name"),
+            )
+        except Exception:
+            pass
 
         assignment.update(update_fields)
         assignment["id"] = str(assignment["_id"])
@@ -398,6 +457,25 @@ class TaskAssignmentService:
             "reason": f"Task completed. Actual duration: {actual_duration}m, Variance: {time_variance}m",
             "timestamp": now,
         })
+
+        try:
+            from app.services.activity_service import ActivityService
+            await ActivityService.log_activity(
+                db=db,
+                event_type="TASK_COMPLETED",
+                title=f"Task completed: '{assignment.get('task_title', 'Task')}'",
+                description=f"Task marked as completed by {assignment.get('employee_name', 'Employee')}. Actual duration: {actual_duration} minutes.",
+                user_email=assignment.get("employee_email") or "employee@enterprise.com",
+                user_name=assignment.get("employee_name") or "Employee",
+                status="COMPLETED",
+                tool_name="Task Completion",
+                card_id=assignment.get("trello_card_id"),
+                card_title=assignment.get("task_title"),
+                card_url=assignment.get("trello_card_url"),
+                board_name=assignment.get("board_name"),
+            )
+        except Exception:
+            pass
 
         assignment.update(update_fields)
         assignment["id"] = str(assignment["_id"])

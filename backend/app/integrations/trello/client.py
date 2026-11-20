@@ -112,6 +112,21 @@ from app.integrations.trello.exceptions import (
 )
 
 
+# Shared persistent HTTP client with connection pooling to maximize request throughput
+_shared_trello_http_client: Optional[httpx.AsyncClient] = None
+
+
+def get_shared_trello_http_client(timeout: float = 15.0) -> httpx.AsyncClient:
+    """Provides a shared httpx.AsyncClient singleton with connection pooling and keep-alive."""
+    global _shared_trello_http_client
+    if _shared_trello_http_client is None or _shared_trello_http_client.is_closed:
+        _shared_trello_http_client = httpx.AsyncClient(
+            timeout=timeout,
+            limits=httpx.Limits(max_keepalive_connections=20, max_connections=50, keepalive_expiry=30.0),
+        )
+    return _shared_trello_http_client
+
+
 class TrelloClient:
     """
     Asynchronous REST client for the Trello API (v1).
@@ -165,22 +180,14 @@ class TrelloClient:
         logger.debug(f"Trello API {method.upper()} {path}")
 
         try:
-            if self._custom_http_client:
-                response = await self._custom_http_client.request(
-                    method=method,
-                    url=url,
-                    params=all_params,
-                    json=json_data,
-                    timeout=self.timeout,
-                )
-            else:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
-                    response = await client.request(
-                        method=method,
-                        url=url,
-                        params=all_params,
-                        json=json_data,
-                    )
+            http_client = self._custom_http_client or get_shared_trello_http_client(timeout=self.timeout)
+            response = await http_client.request(
+                method=method,
+                url=url,
+                params=all_params,
+                json=json_data,
+                timeout=self.timeout,
+            )
 
             if response.status_code == 401:
                 raise TrelloAuthenticationError(
@@ -249,6 +256,19 @@ class TrelloClient:
             "url": b.get("url"),
             "shortUrl": b.get("shortUrl"),
         }
+
+    # 2b. List board actions
+    async def list_board_actions(self, board_id: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+        """Lists recent actions performed on the target board."""
+        target_board = board_id or self.board_id
+        if not target_board:
+            return []
+        try:
+            actions = await self._request("GET", f"/boards/{target_board}/actions", params={"limit": limit})
+            return actions if isinstance(actions, list) else []
+        except Exception as exc:
+            logger.debug(f"Could not fetch board actions from Trello: {exc}")
+            return []
 
     # 3. List board lists
     async def list_lists(self, board_id: Optional[str] = None) -> List[Dict[str, Any]]:

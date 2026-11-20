@@ -379,6 +379,25 @@ class ApprovalService:
         await self.repository.create(pending_model.model_dump())
         logger.info(f"Created pending action draft '{action_id}' for user '{user_id}' (tool='{tool_id}').")
 
+        try:
+            from app.services.activity_service import ActivityService
+            await ActivityService.log_activity(
+                db=self.db,
+                event_type="DRAFT_CREATED",
+                title=f"Prepared {action_type.replace('_', ' ').title()}: '{title}'",
+                description=description,
+                user_email=user_email or "admin@example.com",
+                user_id=user_id,
+                status="PENDING",
+                tool_name=tool_name,
+                action_id=action_id,
+                card_title=title,
+                board_id=target_board_id,
+                board_name=target_board_name,
+            )
+        except Exception:
+            pass
+
         return ApprovalPreviewResponse(
             action_id=action_id,
             tool_id=tool_id,
@@ -541,6 +560,26 @@ class ApprovalService:
             },
         )
         logger.info(f"Action '{action_id}' successfully executed. Card URL: {card_url}")
+
+        try:
+            from app.services.activity_service import ActivityService
+            await ActivityService.log_activity(
+                db=self.db,
+                event_type=locked.get("action_type") or "ACTION_EXECUTED",
+                title=f"Executed {locked.get('action_type', 'Action').replace('_', ' ').title()}: '{locked.get('draft', {}).get('title', 'Task')}'",
+                description="Action successfully executed in Trello.",
+                user_email=locked.get("user_email") or "admin@example.com",
+                user_id=user_id,
+                status="EXECUTED",
+                tool_name=locked.get("tool_name", "Tool Action"),
+                action_id=action_id,
+                card_id=card_id,
+                card_title=locked.get("draft", {}).get("title"),
+                card_url=card_url,
+                board_name=locked.get("draft", {}).get("board_name"),
+            )
+        except Exception:
+            pass
 
         # Module 1 auto-correlation: If this created/assigned a card to a team member, record task assignment
         member_name = draft_params.get("member_name")
@@ -705,6 +744,24 @@ class ApprovalService:
             )
 
         logger.info(f"Cancelled action draft '{action_id}' for user '{user_id}'.")
+
+        try:
+            from app.services.activity_service import ActivityService
+            await ActivityService.log_activity(
+                db=self.db,
+                event_type="ACTION_CANCELLED",
+                title=f"Cancelled {action.get('action_type', 'Action').replace('_', ' ').title()}: '{action.get('draft', {}).get('title', 'Task')}'",
+                description="Action draft was rejected or cancelled.",
+                user_email=action.get("user_email") or "admin@example.com",
+                user_id=user_id,
+                status="REJECTED",
+                tool_name=action.get("tool_name", "Tool Action"),
+                action_id=action_id,
+                card_title=action.get("draft", {}).get("title"),
+                board_name=action.get("draft", {}).get("board_name"),
+            )
+        except Exception:
+            pass
         return ApprovalCancelResponse(
             action_id=action_id,
             status=ApprovalStatus.REJECTED.value,

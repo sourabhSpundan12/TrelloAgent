@@ -9,7 +9,7 @@ _BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 class Settings(BaseSettings):
     # Application Info
-    APP_NAME: str = "Agentic Task Manager"
+    APP_NAME: str = "PM Hooks"
     APP_ENV: str = "development"  # development, testing, staging, production
     APP_HOST: str = "0.0.0.0"
     APP_PORT: int = 8000
@@ -132,7 +132,7 @@ class Settings(BaseSettings):
     SMTP_USER: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM_EMAIL: str = ""
-    SMTP_FROM_NAME: str = "Agentic Task Manager"
+    SMTP_FROM_NAME: str = "PM Hooks"
     SMTP_TLS: bool = True
     SMTP_SSL: bool = False
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 15

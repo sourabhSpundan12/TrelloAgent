@@ -44,7 +44,7 @@ class EmailService:
             os.getenv("SMTP_FROM_EMAIL") or vals.get("SMTP_FROM_EMAIL") or settings.SMTP_FROM_EMAIL or user
         ).strip()
         from_name = (
-            os.getenv("SMTP_FROM_NAME") or vals.get("SMTP_FROM_NAME") or settings.SMTP_FROM_NAME or "Agentic Task Manager"
+            os.getenv("SMTP_FROM_NAME") or vals.get("SMTP_FROM_NAME") or settings.SMTP_FROM_NAME or "PM Hooks"
         )
         use_tls_str = str(os.getenv("SMTP_TLS", vals.get("SMTP_TLS", settings.SMTP_TLS))).lower()
         use_tls = use_tls_str in ("true", "1", "yes")
@@ -131,7 +131,7 @@ class EmailService:
 </head>
 <body>
   <div class="card">
-    <div class="title">Agentic Task Manager</div>
+    <div class="title">PM Hooks</div>
     <div class="expiry">Your password reset verification code:</div>
     <div class="code">{reset_code}</div>
     <div class="expiry">This code is valid for <strong>{expire_minutes} minutes</strong>.</div>

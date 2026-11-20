@@ -7,7 +7,7 @@ def test_settings_default_values():
         JWT_SECRET_KEY="test-secret-key-at-least-32-chars-long!",
         MONGODB_DATABASE="test_db",
     )
-    assert settings.PROJECT_NAME == "Agentic Task Manager"
+    assert settings.PROJECT_NAME == "PM Hooks"
     assert settings.API_V1_STR == "/api/v1"
     assert settings.JWT_ALGORITHM == "HS256"
     assert settings.ACCESS_TOKEN_EXPIRE_MINUTES == 30

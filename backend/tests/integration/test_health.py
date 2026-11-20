@@ -50,7 +50,7 @@ async def test_app_info_endpoint(test_client: AsyncClient):
     resp = await test_client.get("/api/v1/info")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["app_name"] == "Agentic Task Manager"
+    assert data["app_name"] == "PM Hooks"
     assert data["environment"] == "testing"
     assert data["api_prefix"] == "/api/v1"
 

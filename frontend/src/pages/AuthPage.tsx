@@ -313,7 +313,7 @@ export const AuthPage: React.FC = () => {
             <Cpu className="w-8 h-8" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Agentic Task Manager
+            PM Hooks
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
             Autonomous AI Agent & Trello MCP Orchestration Platform

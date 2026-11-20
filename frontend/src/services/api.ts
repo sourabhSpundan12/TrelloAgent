@@ -364,9 +364,11 @@ export const clearChatHistory = async (token?: string): Promise<{ status: string
 };
 
 // --- Phase 7A: Live Trello Tasks, Overview, Activities, and Workload Reports ---
-export const fetchTrelloTasks = async (token?: string, boardId?: string): Promise<any> => {
+export const fetchTrelloTasks = async (token?: string, boardId?: string, refresh?: boolean): Promise<any> => {
   const headers = token ? getAuthHeaders(token) : undefined;
-  const params = boardId ? { board_id: boardId } : undefined;
+  const params: Record<string, any> = {};
+  if (boardId) params.board_id = boardId;
+  if (refresh) params.refresh = 'true';
   const response = await api.get('/api/v1/tasks/trello', {
     headers: headers ? headers : undefined,
     params,
@@ -374,9 +376,11 @@ export const fetchTrelloTasks = async (token?: string, boardId?: string): Promis
   return response.data;
 };
 
-export const fetchOverviewStats = async (token?: string, boardId?: string): Promise<any> => {
+export const fetchOverviewStats = async (token?: string, boardId?: string, refresh?: boolean): Promise<any> => {
   const headers = token ? getAuthHeaders(token) : undefined;
-  const params = boardId ? { board_id: boardId } : undefined;
+  const params: Record<string, any> = {};
+  if (boardId) params.board_id = boardId;
+  if (refresh) params.refresh = 'true';
   const response = await api.get('/api/v1/overview/stats', {
     headers: headers ? headers : undefined,
     params,
@@ -390,10 +394,32 @@ export const fetchLiveActivities = async (token?: string): Promise<any> => {
   return response.data;
 };
 
-export const fetchWorkloadReport = async (token?: string, boardId?: string): Promise<any> => {
+export const fetchWorkloadReport = async (token?: string, boardId?: string, refresh?: boolean): Promise<any> => {
   const headers = token ? getAuthHeaders(token) : undefined;
-  const params = boardId ? { board_id: boardId } : undefined;
+  const params: Record<string, any> = {};
+  if (boardId) params.board_id = boardId;
+  if (refresh) params.refresh = 'true';
   const response = await api.get('/api/v1/reports/workload', {
+    headers: headers ? headers : undefined,
+    params,
+  });
+  return response.data;
+};
+
+export const fetchBoardTaskReport = async (
+  token?: string,
+  boardId?: string,
+  fromDate?: string,
+  toDate?: string,
+  refresh?: boolean
+): Promise<any> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const params: Record<string, string> = {};
+  if (boardId) params.board_id = boardId;
+  if (fromDate) params.from_date = fromDate;
+  if (toDate) params.to_date = toDate;
+  if (refresh) params.refresh = 'true';
+  const response = await api.get('/api/v1/reports/board-tasks', {
     headers: headers ? headers : undefined,
     params,
   });
@@ -549,6 +575,20 @@ export const markNotificationsRead = async (
   const response = await api.post<{ status: string; message: string }>(
     '/api/v1/notifications/mark-read',
     { notification_id: notificationId, mark_all: markAll },
+    headers ? { headers } : undefined
+  );
+  return response.data;
+};
+
+export const deleteNotificationApi = async (
+  notificationId?: string,
+  deleteAll: boolean = false,
+  token?: string
+): Promise<{ status: string; message: string }> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.post<{ status: string; message: string }>(
+    '/api/v1/notifications/delete',
+    { notification_id: notificationId, delete_all: deleteAll },
     headers ? { headers } : undefined
   );
   return response.data;

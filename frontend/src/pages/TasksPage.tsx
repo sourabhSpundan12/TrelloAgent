@@ -34,11 +34,11 @@ export const TasksPage: React.FC = () => {
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
 
-  const loadTasks = async () => {
+  const loadTasks = async (forceRefresh: boolean = false, silent: boolean = false) => {
     if (!isAuthenticated) return;
-    setIsLoading(true);
+    if (!silent) setIsLoading(true);
     try {
-      const data = await fetchTrelloTasks(undefined, activeBoardId || undefined);
+      const data = await fetchTrelloTasks(undefined, activeBoardId || undefined, forceRefresh);
       if (data && data.status === 'SUCCESS') {
         setCards(data.cards || []);
         setLists(data.lists || []);
@@ -47,12 +47,17 @@ export const TasksPage: React.FC = () => {
     } catch (err) {
       console.error('Failed to fetch Trello tasks:', err);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    loadTasks();
+    loadTasks(false, false);
+    // Real-time synchronization polling every 15 seconds to track external Trello changes
+    const interval = setInterval(() => {
+      loadTasks(false, true);
+    }, 15000);
+    return () => clearInterval(interval);
   }, [isAuthenticated, activeBoardId]);
 
   const filteredCards = useMemo(() => {
@@ -142,7 +147,7 @@ export const TasksPage: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={loadTasks}
+            onClick={() => loadTasks(true, false)}
             disabled={isLoading}
             icon={<RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />}
           >

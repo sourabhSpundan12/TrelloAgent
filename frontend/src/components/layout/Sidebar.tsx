@@ -63,10 +63,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {(!isCollapsed || isMobile) && (
               <div className="truncate">
                 <h1 className="text-sm font-bold text-slate-900 dark:text-white tracking-tight truncate">
-                  Agentic Task
+                  PM Hooks
                 </h1>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
-                  Manager Platform
+                  Task & Team Orchestrator
                 </p>
               </div>
             )}

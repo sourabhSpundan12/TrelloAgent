@@ -62,7 +62,7 @@ export const ToolManagementPage: React.FC = () => {
   const [mcpServers, setMcpServers] = useState<MCPServer[]>([
     {
       server_id: 'agentic-task-manager-server',
-      name: 'Agentic Task Manager Safe MCP Server',
+      name: 'PM Hooks Safe MCP Server',
       description: 'Built-in read-only server exposing board summaries, task search, and system metrics.',
       transport_type: 'streamable_http',
       url: 'http://localhost:8000/mcp',

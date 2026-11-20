@@ -126,4 +126,34 @@ async def test_notifications_api_full_lifecycle(test_client: AsyncClient, mock_d
     resp_all_read = await test_client.get("/api/v1/notifications", headers=headers)
     assert resp_all_read.status_code == 200
     assert resp_all_read.json()["unread_count"] == 0
+    # Verified: notifications remain preserved across refreshes
+    assert len(resp_all_read.json()["notifications"]) == 2
+
+    # 8. Delete a single notification
+    to_delete = resp_all_read.json()["notifications"][0]
+    del_resp = await test_client.post(
+        "/api/v1/notifications/delete",
+        headers=headers,
+        json={"notification_id": to_delete["id"]},
+    )
+    assert del_resp.status_code == 200
+
+    resp_after_del = await test_client.get("/api/v1/notifications", headers=headers)
+    assert resp_after_del.status_code == 200
+    remaining_ids = [n["id"] for n in resp_after_del.json()["notifications"]]
+    assert to_delete["id"] not in remaining_ids
+    assert len(remaining_ids) == 1
+
+    # 9. Delete all notifications
+    del_all_resp = await test_client.post(
+        "/api/v1/notifications/delete",
+        headers=headers,
+        json={"delete_all": True},
+    )
+    assert del_all_resp.status_code == 200
+
+    resp_empty = await test_client.get("/api/v1/notifications", headers=headers)
+    assert resp_empty.status_code == 200
+    assert len(resp_empty.json()["notifications"]) == 0
+    assert resp_empty.json()["unread_count"] == 0
 

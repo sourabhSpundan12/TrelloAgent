@@ -23,13 +23,16 @@ router = APIRouter()
 )
 async def get_trello_tasks(
     board_id: Optional[str] = Query(None, description="Optional target Trello board ID"),
+    refresh: bool = Query(False, description="Force refresh from Trello API, bypassing cache"),
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> Dict[str, Any]:
     try:
         active_board_id = await get_active_board_id(db, board_id)
-        cards_res = await trello_tools.trello_list_cards(board_id=active_board_id)
-        lists_res = await trello_tools.trello_list_lists(board_id=active_board_id)
+        cards_res, lists_res = await asyncio.gather(
+            trello_tools.trello_list_cards(board_id=active_board_id, force_refresh=refresh),
+            trello_tools.trello_list_lists(board_id=active_board_id, force_refresh=refresh),
+        )
 
         lists = lists_res.get("lists", [])
         cards = cards_res.get("cards", [])

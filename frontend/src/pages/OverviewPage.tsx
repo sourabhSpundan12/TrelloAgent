@@ -31,23 +31,28 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
   const [stats, setStats] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const loadStats = async () => {
+  const loadStats = async (forceRefresh: boolean = false, silent: boolean = false) => {
     if (!isAuthenticated) return;
-    setIsLoading(true);
+    if (!silent) setIsLoading(true);
     try {
-      const data = await fetchOverviewStats(undefined, activeBoardId || undefined);
+      const data = await fetchOverviewStats(undefined, activeBoardId || undefined, forceRefresh);
       if (data && data.status === 'SUCCESS') {
         setStats(data);
       }
     } catch (err) {
       console.error('Failed to load overview stats:', err);
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    loadStats();
+    loadStats(false, false);
+    // Real-time synchronization polling every 15 seconds to track external Trello changes
+    const interval = setInterval(() => {
+      loadStats(false, true);
+    }, 15000);
+    return () => clearInterval(interval);
   }, [isAuthenticated, activeBoardId]);
 
   const tasks = stats?.tasks || { total: 0, todo: 0, doing: 0, done: 0, completion_rate: 0 };
@@ -74,7 +79,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
           <Button
             variant="ghost"
             size="sm"
-            onClick={loadStats}
+            onClick={() => loadStats(true, false)}
             disabled={isLoading}
             icon={<RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />}
           >

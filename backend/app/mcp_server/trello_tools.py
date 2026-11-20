@@ -10,7 +10,7 @@ _trello_client_instance: Optional[TrelloClient] = None
 
 # In-memory TTL cache for high-frequency read operations to prevent external API stalls
 _trello_cache: Dict[str, tuple[float, Any]] = {}
-CACHE_TTL_SECONDS = 15.0
+CACHE_TTL_SECONDS = 5.0
 
 
 def invalidate_trello_cache() -> None:
@@ -32,11 +32,11 @@ def set_trello_client(client: Optional[TrelloClient]) -> None:
     invalidate_trello_cache()
 
 
-async def trello_list_boards() -> Dict[str, Any]:
+async def trello_list_boards(force_refresh: bool = False) -> Dict[str, Any]:
     """List all Trello boards accessible with current credentials."""
     cache_key = "boards:all"
     now = time.time()
-    if cache_key in _trello_cache:
+    if not force_refresh and cache_key in _trello_cache:
         c_time, c_data = _trello_cache[cache_key]
         if now - c_time < CACHE_TTL_SECONDS:
             return copy.deepcopy(c_data)
@@ -52,11 +52,11 @@ async def trello_list_boards() -> Dict[str, Any]:
         return {"status": "ERROR", "error": True, "message": err.message, "status_code": err.status_code}
 
 
-async def trello_get_board(board_id: Optional[str] = None) -> Dict[str, Any]:
+async def trello_get_board(board_id: Optional[str] = None, force_refresh: bool = False) -> Dict[str, Any]:
     """Retrieve details and metadata for a specific Trello board (defaults to configured board ID)."""
     cache_key = f"board:{board_id}"
     now = time.time()
-    if cache_key in _trello_cache:
+    if not force_refresh and cache_key in _trello_cache:
         c_time, c_data = _trello_cache[cache_key]
         if now - c_time < CACHE_TTL_SECONDS:
             return copy.deepcopy(c_data)
@@ -72,11 +72,11 @@ async def trello_get_board(board_id: Optional[str] = None) -> Dict[str, Any]:
         return {"status": "ERROR", "error": True, "message": err.message, "status_code": err.status_code}
 
 
-async def trello_list_board_members(board_id: Optional[str] = None) -> Dict[str, Any]:
+async def trello_list_board_members(board_id: Optional[str] = None, force_refresh: bool = False) -> Dict[str, Any]:
     """List all members belonging to the target board."""
     cache_key = f"members:{board_id}"
     now = time.time()
-    if cache_key in _trello_cache:
+    if not force_refresh and cache_key in _trello_cache:
         c_time, c_data = _trello_cache[cache_key]
         if now - c_time < CACHE_TTL_SECONDS:
             return copy.deepcopy(c_data)
@@ -92,11 +92,31 @@ async def trello_list_board_members(board_id: Optional[str] = None) -> Dict[str,
         return {"status": "ERROR", "error": True, "message": err.message, "status_code": err.status_code}
 
 
-async def trello_list_lists(board_id: Optional[str] = None) -> Dict[str, Any]:
+async def trello_list_board_actions(board_id: Optional[str] = None, limit: int = 50, force_refresh: bool = False) -> Dict[str, Any]:
+    """List recent activity actions from Trello board with caching."""
+    cache_key = f"board_actions:{board_id}:{limit}"
+    now = time.time()
+    if not force_refresh and cache_key in _trello_cache:
+        c_time, c_data = _trello_cache[cache_key]
+        if now - c_time < CACHE_TTL_SECONDS:
+            return copy.deepcopy(c_data)
+
+    client = get_trello_client()
+    try:
+        actions = await client.list_board_actions(board_id=board_id, limit=limit)
+        res = {"status": "SUCCESS", "actions": actions, "total": len(actions)}
+        _trello_cache[cache_key] = (now, res)
+        return copy.deepcopy(res)
+    except Exception as err:
+        logger.debug(f"trello_list_board_actions skipped: {err}")
+        return {"status": "ERROR", "actions": [], "total": 0, "error": str(err)}
+
+
+async def trello_list_lists(board_id: Optional[str] = None, force_refresh: bool = False) -> Dict[str, Any]:
     """List all open columns/lists on a Trello board (defaults to configured board ID)."""
     cache_key = f"lists:{board_id}"
     now = time.time()
-    if cache_key in _trello_cache:
+    if not force_refresh and cache_key in _trello_cache:
         c_time, c_data = _trello_cache[cache_key]
         if now - c_time < CACHE_TTL_SECONDS:
             return copy.deepcopy(c_data)
@@ -133,11 +153,12 @@ async def trello_create_list(
 async def trello_list_cards(
     board_id: Optional[str] = None,
     list_id: Optional[str] = None,
+    force_refresh: bool = False,
 ) -> Dict[str, Any]:
     """List cards on a Trello board or within a specific list (defaults to configured board ID)."""
     cache_key = f"cards:{board_id}:{list_id}"
     now = time.time()
-    if cache_key in _trello_cache:
+    if not force_refresh and cache_key in _trello_cache:
         c_time, c_data = _trello_cache[cache_key]
         if now - c_time < CACHE_TTL_SECONDS:
             return copy.deepcopy(c_data)
@@ -153,13 +174,13 @@ async def trello_list_cards(
         return {"status": "ERROR", "error": True, "message": err.message, "status_code": err.status_code}
 
 
-async def trello_get_card(card_id: str) -> Dict[str, Any]:
+async def trello_get_card(card_id: str, force_refresh: bool = False) -> Dict[str, Any]:
     """Retrieve details and status for a specific Trello card by ID."""
     if not card_id or not card_id.strip():
         return {"status": "ERROR", "error": True, "message": "card_id is required."}
     cache_key = f"card:{card_id.strip()}"
     now = time.time()
-    if cache_key in _trello_cache:
+    if not force_refresh and cache_key in _trello_cache:
         c_time, c_data = _trello_cache[cache_key]
         if now - c_time < CACHE_TTL_SECONDS:
             return copy.deepcopy(c_data)

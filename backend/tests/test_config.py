@@ -4,7 +4,7 @@ from app.core.security import compute_payload_hash, verify_payload_hash
 
 
 def test_settings_load_defaults():
-    assert settings.PROJECT_NAME == "Agentic Task Manager"
+    assert settings.PROJECT_NAME == "PM Hooks"
     assert settings.API_V1_STR == "/api/v1"
     assert isinstance(settings.BACKEND_CORS_ORIGINS, list)
     assert len(settings.BACKEND_CORS_ORIGINS) > 0

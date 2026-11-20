@@ -267,6 +267,24 @@ async def activate_board(
     target["updated_at"] = now.isoformat()
     target.pop("_id", None)
 
+    try:
+        from app.services.activity_service import ActivityService
+        await ActivityService.log_activity(
+            db=db,
+            event_type="BOARD_ACTIVATED",
+            title=f"Board '{target.get('name')}' activated",
+            description=f"Active working board switched to '{target.get('name')}'.",
+            user_email=current_user.email,
+            user_name=current_user.full_name or "Project Manager",
+            user_id=current_user.id,
+            status="EXECUTED",
+            tool_name="Board Management",
+            board_id=board_id,
+            board_name=target.get("name"),
+        )
+    except Exception:
+        pass
+
     return BoardResponse(
         id=str(target.get("id") or board_id),
         board_id=board_id,
