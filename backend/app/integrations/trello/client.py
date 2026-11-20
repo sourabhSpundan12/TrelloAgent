@@ -383,6 +383,8 @@ class TrelloClient:
                 "closed": c.get("closed", False),
                 "url": c.get("url"),
                 "due": c.get("due"),
+                "dueComplete": c.get("dueComplete", False),
+                "dateLastActivity": c.get("dateLastActivity"),
                 "labels": c.get("labels", []),
                 "idMembers": c.get("idMembers", []),
             }
@@ -536,7 +538,7 @@ class TrelloClient:
             parsed_due = parse_due_date_for_trello(due)
             if parsed_due:
                 params["due"] = parsed_due
-        if desc is not None:
+        if desc is not None and not str(desc).lower().startswith("move card"):
             params["desc"] = desc.strip()
 
         c = await self._request("PUT", f"/cards/{card_id.strip()}", params=params)
@@ -575,5 +577,25 @@ class TrelloClient:
         return {
             "id": card_id.strip(),
             "deleted": True,
+        }
+
+    # 11. Post a comment on a card (Module 5 One-Hour Reminder)
+    async def add_comment(self, card_id: str, text: str) -> Dict[str, Any]:
+        """Posts a comment on a Trello card."""
+        if not card_id or not card_id.strip():
+            raise TrelloValidationError("card_id is required.")
+        if not text or not text.strip():
+            raise TrelloValidationError("text is required.")
+
+        res = await self._request(
+            "POST",
+            f"/cards/{card_id.strip()}/actions/comments",
+            params={"text": text.strip()}
+        )
+        return {
+            "id": res.get("id"),
+            "card_id": card_id.strip(),
+            "text": text.strip(),
+            "created_at": res.get("date"),
         }
 

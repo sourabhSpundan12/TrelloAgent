@@ -224,10 +224,40 @@ class ApprovalService:
             description = f"Create new column/list '{title}' on the board."
         elif action_type == "MOVE_CARD":
             raw_desc = parameters.get("desc") or parameters.get("description")
-            if raw_desc and "task created via agentic assistant" not in str(raw_desc).lower() and str(raw_desc).strip() != "":
+            has_explicit_desc = bool(
+                raw_desc
+                and "task created via agentic assistant" not in str(raw_desc).lower()
+                and not str(raw_desc).lower().startswith("move card")
+                and str(raw_desc).strip() != ""
+            )
+            if has_explicit_desc:
                 description = str(raw_desc).strip()
             else:
-                description = f"Move card '{title}' to {list_name}."
+                # User did not provide a new description: retain existing card description
+                existing_card_desc = None
+                try:
+                    from app.mcp_server import trello_tools
+                    cards_res = await trello_tools.trello_list_cards(board_id=target_board_id)
+                    title_norm = title.lower().strip()
+                    for c in cards_res.get("cards", []):
+                        c_name = c.get("name", "").lower().strip()
+                        if c_name == title_norm or title_norm in c_name:
+                            existing_card_desc = c.get("desc")
+                            break
+                except Exception:
+                    pass
+
+                if not existing_card_desc and self.db is not None:
+                    try:
+                        t_doc = await self.db["task_assignments"].find_one(
+                            {"task_title": {"$regex": f"^{re.escape(title)}$", "$options": "i"}}
+                        )
+                        if t_doc and t_doc.get("task_description"):
+                            existing_card_desc = t_doc["task_description"]
+                    except Exception:
+                        pass
+
+                description = existing_card_desc.strip() if existing_card_desc else ""
         elif action_type == "UPDATE_CARD":
             raw_desc = parameters.get("desc") or parameters.get("description") or parameters.get("new_description")
             member_name = parameters.get("member_name") or parameters.get("assignee")
@@ -289,8 +319,12 @@ class ApprovalService:
             exec_params["desc"] = description
             if parameters.get("member_name"):
                 exec_params["member_name"] = parameters.get("member_name")
-        elif action_type == "MOVE_CARD" and (parameters.get("desc") or parameters.get("description")):
-            exec_params["desc"] = description
+        elif action_type == "MOVE_CARD":
+            if has_explicit_desc:
+                exec_params["desc"] = description
+            else:
+                exec_params.pop("desc", None)
+                exec_params.pop("description", None)
         elif action_type == "UPDATE_CARD":
             if parameters.get("desc") or parameters.get("description") or parameters.get("new_description"):
                 exec_params["desc"] = parameters.get("desc") or parameters.get("description") or parameters.get("new_description")
@@ -507,6 +541,46 @@ class ApprovalService:
             },
         )
         logger.info(f"Action '{action_id}' successfully executed. Card URL: {card_url}")
+
+        # Module 1 auto-correlation: If this created/assigned a card to a team member, record task assignment
+        member_name = draft_params.get("member_name")
+        if member_name and card_id:
+            try:
+                from app.services.task_assignment_service import TaskAssignmentService
+                from app.integrations.trello.client import parse_due_date_for_trello
+                emp = await self.db["users"].find_one({
+                    "$or": [
+                        {"full_name": {"$regex": f"^{re.escape(member_name.strip())}$", "$options": "i"}},
+                        {"full_name": {"$regex": re.escape(member_name.strip()), "$options": "i"}},
+                        {"email": {"$regex": re.escape(member_name.strip()), "$options": "i"}},
+                    ]
+                })
+                if emp:
+                    emp_id = str(emp["_id"])
+                    existing_ass = await self.db["task_assignments"].find_one({"trello_card_id": card_id})
+                    if not existing_ass:
+                        due_dt = None
+                        if due_val:
+                            iso_str = parse_due_date_for_trello(due_val)
+                            if iso_str:
+                                due_dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+
+                        await TaskAssignmentService.create_assignment(
+                            db=self.db,
+                            employee_id=emp_id,
+                            project_manager_id=user_id,
+                            board_id=board_id_val or "default",
+                            trello_card_id=card_id,
+                            task_title=locked.get("draft", {}).get("title") or draft_params.get("name") or "Assigned Task",
+                            task_description=locked.get("draft", {}).get("description"),
+                            due_date=due_dt,
+                            board_name=locked.get("draft", {}).get("board_name"),
+                            trello_card_url=card_url,
+                            employee_name=emp.get("full_name"),
+                            employee_email=emp.get("email"),
+                        )
+            except Exception as e:
+                logger.warning(f"Could not auto-create task assignment for card {card_id}: {e}")
 
         return ApprovalConfirmResponse(
             action_id=action_id,

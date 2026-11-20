@@ -388,3 +388,83 @@ export interface NotificationsResponse {
   total: number;
   notifications: NotificationItem[];
 }
+
+// Module 1, 2, 3, 4: Employee Task Assignment, Tracking & Performance Types
+export type TaskAssignmentStatusType = 'assigned' | 'in_progress' | 'completed' | 'overdue' | 'cancelled';
+export type PerformanceLevelType = 'LOW' | 'MEDIUM' | 'HIGH' | 'NOT_ENOUGH_DATA';
+
+export interface TaskAssignment {
+  id: string;
+  employee_id: string;
+  employee_name?: string;
+  employee_email?: string;
+  project_manager_id: string;
+  project_manager_name?: string;
+  board_id: string;
+  board_name?: string;
+  trello_card_id: string;
+  trello_card_url?: string;
+  task_title: string;
+  task_description?: string;
+  assigned_at: string;
+  status: TaskAssignmentStatusType;
+  due_date?: string;
+  due_date_set_at?: string;
+  due_date_set_by?: string;
+  due_date_set_by_role?: string;
+  due_date_version: number;
+  started_at?: string;
+  completed_at?: string;
+  estimated_duration_minutes?: number;
+  actual_duration_minutes?: number;
+  time_variance_minutes?: number;
+  time_remaining_minutes?: number;
+  is_overdue?: boolean;
+  trello_sync_status: string;
+  last_sync_error?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskAssignmentHistoryItem {
+  id: string;
+  assignment_id: string;
+  action: string;
+  actor_id: string;
+  actor_role: string;
+  old_due_date?: string;
+  new_due_date?: string;
+  old_estimated_duration_minutes?: number;
+  new_estimated_duration_minutes?: number;
+  old_status?: string;
+  new_status?: string;
+  reason?: string;
+  timestamp: string;
+}
+
+export interface EmployeeLevelHistoryItem {
+  id: string;
+  employee_id: string;
+  old_level?: string;
+  new_level: string;
+  score: number;
+  reason?: string;
+  calculated_at: string;
+}
+
+export interface EmployeeTaskReportSummary {
+  employee_id: string;
+  employee_name?: string;
+  employee_email?: string;
+  assigned_count: number;
+  in_progress_count: number;
+  completed_count: number;
+  overdue_count: number;
+  on_time_completion_rate: number;
+  avg_estimated_duration_minutes: number;
+  avg_actual_duration_minutes: number;
+  performance_level: PerformanceLevelType;
+  overall_score: number;
+  tasks: TaskAssignment[];
+}
+

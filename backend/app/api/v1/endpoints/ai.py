@@ -493,12 +493,29 @@ async def interpret_user_command(
                     break
             if not selected_tool:
                 direct_tool = await discovery_service.repo.get_by_id(target_tool_id)
+                if not direct_tool:
+                    from app.tool_registry.service import DEFAULT_ENTERPRISE_TOOLS
+                    for dt in DEFAULT_ENTERPRISE_TOOLS:
+                        if dt.get("tool_id") == target_tool_id:
+                            direct_tool = dt
+                            break
                 if direct_tool and direct_tool.get("enabled", True):
                     from app.tool_discovery.schemas import ToolDefinitionSchema
                     selected_tool = ToolDefinitionSchema(**direct_tool)
 
     if not selected_tool and discovered_tools and intent_output.intent != "unknown":
-        selected_tool = discovered_tools[0].tool
+        cand_tool = discovered_tools[0].tool
+        cand_caps = getattr(cand_tool, "capabilities", [])
+        if any(intent_output.intent in cap for cap in cand_caps) or cand_tool.tool_id == target_tool_id:
+            selected_tool = cand_tool
+        else:
+            from app.tool_registry.service import DEFAULT_ENTERPRISE_TOOLS
+            from app.tool_discovery.schemas import ToolDefinitionSchema
+            fallback_tid = target_tool_id or "trello_search_cards"
+            for dt in DEFAULT_ENTERPRISE_TOOLS:
+                if dt.get("tool_id") == fallback_tid:
+                    selected_tool = ToolDefinitionSchema(**dt)
+                    break
 
     approval_required = selected_tool.approval_required if selected_tool else False
     preview_data = None

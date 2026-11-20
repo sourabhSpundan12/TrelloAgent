@@ -360,3 +360,34 @@ def test_generate_related_description_preserves_custom_notes():
     )
     assert desc == custom_desc
 
+
+@pytest.mark.asyncio
+async def test_move_card_preserves_existing_description(mock_db):
+    """Verify that moving a card retains the card's existing description and does NOT overwrite it with a move command string."""
+    service = ApprovalService(db=mock_db)
+
+    # Seed an existing task with an original description in mock_db
+    await mock_db["task_assignments"].insert_one({
+        "task_title": "Hr-atlas",
+        "task_description": "Configure authorization checks and access controls across systems.",
+    })
+
+    preview = await service.create_task_draft(
+        user_id="user123",
+        user_email="user@example.com",
+        command="move card Hr-atlas to DONE",
+        intent="move_card",
+        tool_id="trello_move_card",
+        tool_name="Move Trello Card",
+        category="TRELLO",
+        action_type="MOVE_CARD",
+        parameters={"card_name": "Hr-atlas", "target_status": "DONE", "card_id": "c101", "list_id": "l_done"},
+    )
+
+    # Description must be the existing card's description, NOT "Move card 'Hr-atlas' to DONE."
+    assert preview.draft.description == "Configure authorization checks and access controls across systems."
+    # Parameters sent to execution must NOT overwrite the description on Trello
+    assert "desc" not in preview.draft.parameters
+    assert "description" not in preview.draft.parameters
+
+

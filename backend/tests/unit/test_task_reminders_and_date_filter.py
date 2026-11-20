@@ -183,3 +183,72 @@ async def test_mock_trello_archive_card_executor_bulk_delete():
     assert result.result["list_name"] == "To Do"
 
 
+def test_show_card_of_list_recognition():
+    """Verify that commands asking to show or list cards from a list are classified as search_cards, never mutations."""
+    service = AIService()
+    tools = [{"tool_id": "trello_search_cards"}, {"tool_id": "trello_move_card"}]
+
+    res1 = service._fallback_deterministic_interpreter("show card of Doing list", tools)
+    assert res1.intent == "search_cards"
+    assert res1.parameters.get("list_name") == "Doing"
+    assert res1.suggested_tool_id == "trello_search_cards"
+
+    res2 = service._fallback_deterministic_interpreter("show Doing cards", tools)
+    assert res2.intent == "search_cards"
+    assert res2.parameters.get("list_name") == "Doing"
+
+    res3 = service._fallback_deterministic_interpreter("show cards in To Do", tools)
+    assert res3.intent == "search_cards"
+    assert res3.parameters.get("list_name") == "To Do"
+
+
+@pytest.mark.asyncio
+async def test_get_employee_tasks_date_range_filtering():
+    """Verify that get_employee_tasks strictly filters tasks within date bounds and returns empty on future ranges."""
+    from app.services.task_assignment_service import TaskAssignmentService
+
+    mock_db = MagicMock()
+    mock_user = {"_id": "u123", "full_name": "Sourabh Mishra", "email": "sourabh@example.com"}
+    mock_db["users"].find_one = AsyncMock(return_value=mock_user)
+
+    # Task assigned on Nov 19, 2026 and due Nov 20, 2026
+    sample_task = {
+        "_id": "t1",
+        "employee_id": "u123",
+        "employee_name": "Sourabh Mishra",
+        "task_title": "TrelloAgent",
+        "status": "in_progress",
+        "due_date": datetime(2026, 11, 20, 15, 57, tzinfo=timezone.utc),
+        "assigned_at": datetime(2026, 11, 19, 17, 27, tzinfo=timezone.utc),
+        "created_at": datetime(2026, 11, 19, 17, 27, tzinfo=timezone.utc),
+    }
+
+    mock_cursor = MagicMock()
+    # Mock find().sort().to_list()
+    mock_cursor.to_list = AsyncMock(return_value=[dict(sample_task)])
+    mock_sort = MagicMock(return_value=mock_cursor)
+    mock_db["task_assignments"].find = MagicMock(return_value=MagicMock(sort=mock_sort))
+
+    # 1. Future date range where no task belongs (Nov 25 - Nov 30, 2026) -> must return []
+    future_tasks = await TaskAssignmentService.get_employee_tasks(
+        db=mock_db,
+        employee_id="u123",
+        from_date=datetime(2026, 11, 25, 0, 0, tzinfo=timezone.utc),
+        to_date=datetime(2026, 11, 30, 0, 0, tzinfo=timezone.utc),
+    )
+    assert len(future_tasks) == 0
+
+    # 2. Matching date range (Nov 19 - Nov 21, 2026) -> must return the task
+    mock_cursor.to_list = AsyncMock(return_value=[dict(sample_task)])
+    matching_tasks = await TaskAssignmentService.get_employee_tasks(
+        db=mock_db,
+        employee_id="u123",
+        from_date=datetime(2026, 11, 19, 0, 0, tzinfo=timezone.utc),
+        to_date=datetime(2026, 11, 21, 0, 0, tzinfo=timezone.utc),
+    )
+    assert len(matching_tasks) == 1
+    assert matching_tasks[0]["task_title"] == "TrelloAgent"
+
+
+
+

@@ -17,6 +17,7 @@ from app.middleware.error_handler import (
 from app.middleware.logging_middleware import StructuredLoggingMiddleware
 from app.mcp_server import create_mcp_streamable_app
 from app.services.auth_service import AuthService
+from app.services.one_hour_reminder_service import OneHourReminderService
 from app.tool_registry.service import ToolRegistryService
 
 mcp_subapp = create_mcp_streamable_app(streamable_http_path="/")
@@ -40,8 +41,26 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning(f"Startup post-connection hook encountered an issue: {exc}")
 
-    async with mcp_subapp.router.lifespan_context(mcp_subapp):
-        yield
+    # Module 5: Start background worker for automatic 1-hour deadline reminders
+    import asyncio
+    async def _one_hour_reminder_worker():
+        while True:
+            try:
+                await asyncio.sleep(60)
+                db = MongoDBManager.get_db()
+                await OneHourReminderService.process_due_reminders(db)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.warning(f"One-hour reminder worker encountered an error: {e}")
+
+    reminder_task = asyncio.create_task(_one_hour_reminder_worker())
+
+    try:
+        async with mcp_subapp.router.lifespan_context(mcp_subapp):
+            yield
+    finally:
+        reminder_task.cancel()
 
     # Shutdown
     logger.info(f"Shutting down {settings.PROJECT_NAME}...")

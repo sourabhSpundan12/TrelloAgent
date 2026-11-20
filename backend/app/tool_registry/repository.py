@@ -23,6 +23,8 @@ class ToolRepository:
             doc.pop("_id", None)
         return doc
 
+    get_by_id = get_by_tool_id
+
     async def get_by_name(self, name: str) -> Optional[Dict[str, Any]]:
         """Find a tool by unique human-readable name."""
         doc = await self.collection.find_one({"name": name})

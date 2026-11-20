@@ -183,6 +183,14 @@ async def tool_trello_archive_card(card_id: str) -> Dict[str, Any]:
     return await trello_tools.trello_archive_card(card_id=card_id)
 
 
+@mcp_server.tool(
+    name="trello_add_comment",
+    description="Post a comment to a Trello card (used for AI-generated deadline reminders).",
+)
+async def tool_trello_add_comment(card_id: str, text: str) -> Dict[str, Any]:
+    return await trello_tools.trello_add_comment(card_id=card_id, text=text)
+
+
 # ---------------------------------------------------------------------------
 # Transports
 # ---------------------------------------------------------------------------

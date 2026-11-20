@@ -137,6 +137,16 @@ class Settings(BaseSettings):
     SMTP_SSL: bool = False
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 15
 
+    # Employee Performance Scoring Configuration (Module 4)
+    PERFORMANCE_WEIGHT_ON_TIME: float = 0.40
+    PERFORMANCE_WEIGHT_CONSISTENCY: float = 0.30
+    PERFORMANCE_WEIGHT_COMPLETION: float = 0.20
+    PERFORMANCE_WEIGHT_RELIABILITY: float = 0.10
+    PERFORMANCE_HIGH_THRESHOLD: float = 80.0
+    PERFORMANCE_MEDIUM_THRESHOLD: float = 60.0
+    PERFORMANCE_MIN_COMPLETED_TASKS: int = 3
+    PERFORMANCE_EVALUATION_DAYS: int = 90
+
     @model_validator(mode="after")
     def validate_production_settings(self) -> "Settings":
         # Synchronize MONGODB_URL and MONGODB_URI

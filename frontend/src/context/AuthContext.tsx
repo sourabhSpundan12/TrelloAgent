@@ -6,6 +6,7 @@ import {
   getStoredToken,
   loginUser,
   registerUser,
+  silentRefreshToken,
 } from '../services/api';
 
 interface AuthContextType {
@@ -29,7 +30,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const initAuth = async () => {
     const token = getStoredToken();
-    if (!token) {
+    const hasRefreshToken = !!localStorage.getItem('refresh_token');
+
+    if (!token && !hasRefreshToken) {
       setUser(null);
       setIsLoading(false);
       return;
@@ -39,6 +42,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userData = await fetchCurrentUser();
       setUser(userData);
     } catch (err) {
+      // If access token expired, attempt silent token refresh before giving up
+      if (hasRefreshToken) {
+        try {
+          const newToken = await silentRefreshToken();
+          if (newToken) {
+            const userData = await fetchCurrentUser();
+            setUser(userData);
+            return;
+          }
+        } catch {
+          // Both access & refresh token failed
+        }
+      }
       console.warn('Stored token is invalid or expired. Clearing token state.');
       clearStoredTokens();
       setUser(null);
