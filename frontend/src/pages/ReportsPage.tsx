@@ -14,6 +14,7 @@ import {
   ExternalLink,
   Filter,
   FileSpreadsheet,
+  FileText,
   X,
   Briefcase,
 } from 'lucide-react';
@@ -24,6 +25,8 @@ import { useAuth } from '../context/AuthContext';
 import { useBoard } from '../context/BoardContext';
 import { fetchBoardTaskReport, fetchWorkloadReport } from '../services/api';
 import { exportToExcel } from '../utils/excelExport';
+import { formatISTDateTime } from '../utils/dateUtils';
+import { PdfReportModal } from '../components/reports/PdfReportModal';
 
 interface BoardTask {
   id: string;
@@ -73,6 +76,9 @@ export const ReportsPage: React.FC = () => {
 
   // Top N Display Control
   const [topNLimit, setTopNLimit] = useState<number>(5);
+
+  // PDF Export & Email Modal State
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState<boolean>(false);
 
   const loadData = async (forceRefresh: boolean = false, silent: boolean = false) => {
     if (!isAuthenticated) return;
@@ -162,8 +168,8 @@ export const ReportsPage: React.FC = () => {
       c.list || '—',
       c.status || 'Pending',
       c.overdue || '—',
-      c.due_date ? new Date(c.due_date).toLocaleString() : '—',
-      c.created_at ? new Date(c.created_at).toLocaleString() : '—',
+      c.due_date ? formatISTDateTime(c.due_date) : '—',
+      c.created_at ? formatISTDateTime(c.created_at) : '—',
       c.url || '—',
     ]);
 
@@ -214,6 +220,15 @@ export const ReportsPage: React.FC = () => {
             icon={<Printer className="w-3.5 h-3.5" />}
           >
             Print
+          </Button>
+
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setIsPdfModalOpen(true)}
+            icon={<FileText className="w-3.5 h-3.5" />}
+          >
+            Export & Email PDF
           </Button>
         </div>
       </Card>
@@ -735,6 +750,13 @@ export const ReportsPage: React.FC = () => {
           </div>
         </Card>
       )}
+
+      {/* Official Executive PDF Reports & Email Modal */}
+      <PdfReportModal
+        isOpen={isPdfModalOpen}
+        onClose={() => setIsPdfModalOpen(false)}
+        boardId={activeBoardId}
+      />
     </div>
   );
 };

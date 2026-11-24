@@ -25,6 +25,7 @@ import { Badge, CategoryBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { StatCard } from '../components/common/StatCard';
 import { EmptyState } from '../components/common/EmptyState';
+import { formatISTTime } from '../utils/dateUtils';
 import {
   RegisteredTool,
   ToolCategory,
@@ -723,7 +724,7 @@ export const ToolManagementPage: React.FC = () => {
                         {server.last_connected_at && (
                           <>
                             <span className="text-slate-300 dark:text-slate-700">•</span>
-                            <span>Last verified: {new Date(server.last_connected_at).toLocaleTimeString()}</span>
+                            <span>Last verified: {formatISTTime(server.last_connected_at)}</span>
                           </>
                         )}
                       </div>

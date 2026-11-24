@@ -20,6 +20,7 @@ import { Badge } from '../components/common/Badge';
 import { useAuth } from '../context/AuthContext';
 import { useBoard } from '../context/BoardContext';
 import { fetchOverviewStats } from '../services/api';
+import { DashboardReportsWidget } from '../components/reports/DashboardReportsWidget';
 
 interface OverviewPageProps {
   onNavigate: (tab: string) => void;
@@ -57,7 +58,6 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
 
   const tasks = stats?.tasks || { total: 0, todo: 0, doing: 0, done: 0, completion_rate: 0 };
   const system = stats?.system || { active_tools: 9, pending_approvals: 0, executed_mutations: 0 };
-  const recentActivities: any[] = stats?.recent_activities || [];
 
   const donePercent = tasks.total > 0 ? Math.round((tasks.done / tasks.total) * 100) : 0;
   const doingPercent = tasks.total > 0 ? Math.round((tasks.doing / tasks.total) * 100) : 0;
@@ -71,9 +71,9 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
           <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
             System Operational Overview
           </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          {/* <p className="text-xs text-slate-500 dark:text-slate-400">
             Real-time status of Trello tasks, MCP tools, and human-in-the-loop approvals
-          </p>
+          </p> */}
         </div>
         <div className="flex items-center space-x-2">
           <Button
@@ -91,7 +91,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
             onClick={() => onNavigate('ai-assistant')}
             icon={<Bot className="w-3.5 h-3.5" />}
           >
-            Open AI Assistant
+            AI Assistant
           </Button>
         </div>
       </div>
@@ -108,13 +108,13 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
                 <span className="font-bold text-slate-900 dark:text-white">
                   Active Board: {activeBoard.name}
                 </span>
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                {/* <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
                   {activeBoard.board_id}
-                </span>
+                </span> */}
               </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+              {/* <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                 Showing live cards, member workloads, and mutation audits for this Trello workspace.
-              </p>
+              </p> */}
             </div>
           </div>
           <div className="flex items-center space-x-2 self-end sm:self-center">
@@ -173,15 +173,21 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
           subtitle="MongoDB Tool Registry"
           onClick={() => onNavigate('tools')}
         />
-        <StatCard
+        {/* <StatCard
           title="Executed Actions"
           value={system.executed_mutations}
           icon={ShieldCheck}
           color="amber"
           subtitle="Approved mutations"
           onClick={() => onNavigate('activity')}
-        />
+        /> */}
       </div>
+
+      {/* Weekly Executive Reports & AI Feedback Widget on Dashboard */}
+      <DashboardReportsWidget
+        boardId={activeBoardId}
+        onNavigate={onNavigate}
+      />
 
       {/* Main Grid: Status Distribution & AI Integration Highlights */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -235,10 +241,10 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
         <Card className="lg:col-span-2">
           <CardHeader
             title="Conversational AI Agent Architecture"
-            subtitle="Human-in-the-Loop Execution Pipeline (Phase 7A)"
+            // subtitle="Human-in-the-Loop Execution Pipeline (Phase 7A)"
             action={
               <Button variant="primary" size="sm" onClick={() => onNavigate('ai-assistant')} icon={<Bot className="w-3.5 h-3.5" />}>
-                Chat with Assistant
+                AI Assistant
               </Button>
             }
           />
@@ -286,77 +292,6 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate }) => {
           </CardContent>
         </Card>
       </div>
-
-      {/* Second Row: Recent Actions from MongoDB Atlas */}
-      <Card>
-        <CardHeader
-          title="Recent AI & MCP Actions"
-          subtitle="Live audit trail from MongoDB Atlas pending_actions"
-          action={
-            <Button variant="ghost" size="sm" onClick={() => onNavigate('activity')}>
-              View All History
-            </Button>
-          }
-        />
-        <CardContent>
-          {recentActivities.length === 0 ? (
-            <p className="text-xs text-slate-400 py-4 text-center italic">
-              No recent actions recorded. Try asking the AI Assistant: &quot;Create a task card Login API&quot;.
-            </p>
-          ) : (
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {recentActivities.map((act, idx) => (
-                <div key={act.action_id || idx} className="py-3 flex items-center justify-between text-xs">
-                  <div className="flex items-center space-x-3 min-w-0 pr-3">
-                    <span
-                      className={`w-2 h-2 rounded-full shrink-0 ${
-                        act.status === 'EXECUTED'
-                          ? 'bg-emerald-500'
-                          : act.status === 'REJECTED'
-                          ? 'bg-rose-500'
-                          : 'bg-amber-500 animate-pulse'
-                      }`}
-                    />
-                    <div className="min-w-0">
-                      <p className="font-medium text-slate-900 dark:text-slate-100 truncate">
-                        {act.title}
-                      </p>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {act.action_id} • {act.tool_name}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-3 shrink-0">
-                    <Badge
-                      variant={
-                        act.status === 'EXECUTED'
-                          ? 'success'
-                          : act.status === 'REJECTED'
-                          ? 'danger'
-                          : 'warning'
-                      }
-                    >
-                      {act.status}
-                    </Badge>
-                    {act.card_url && (
-                      <a
-                        href={act.card_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-brand-600 hover:text-brand-500 p-1"
-                        title="View Card in Trello"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 };

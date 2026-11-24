@@ -88,14 +88,15 @@ async def tool_trello_list_lists(board_id: Optional[str] = None) -> Dict[str, An
 
 @mcp_server.tool(
     name="trello_create_list",
-    description="Create a new column or list on the Trello board (e.g. In-Review, Backlog).",
+    description="Create one or multiple new columns/lists on the Trello board (e.g. Backlog, In-Review, Done).",
 )
 async def tool_trello_create_list(
-    name: str,
+    name: Optional[str] = None,
+    names: Optional[List[str]] = None,
     board_id: Optional[str] = None,
     pos: Optional[str] = "bottom",
 ) -> Dict[str, Any]:
-    return await trello_tools.trello_create_list(name=name, board_id=board_id, pos=pos)
+    return await trello_tools.trello_create_list(name=name, names=names, board_id=board_id, pos=pos)
 
 
 @mcp_server.tool(
@@ -119,13 +120,14 @@ async def tool_trello_get_card(card_id: str) -> Dict[str, Any]:
 
 @mcp_server.tool(
     name="trello_create_card",
-    description="Create a new task card on the Trello board. If list_id is omitted, places in first open list.",
+    description="Create a new task card on the Trello board with optional start date and due date. If list_id is omitted, places in first open list.",
 )
 async def tool_trello_create_card(
     name: str,
     list_id: Optional[str] = None,
     desc: Optional[str] = "",
     due_date: Optional[str] = None,
+    start_date: Optional[str] = None,
     board_id: Optional[str] = None,
     member_name: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -134,6 +136,7 @@ async def tool_trello_create_card(
         list_id=list_id,
         desc=desc,
         due_date=due_date,
+        start_date=start_date,
         board_id=board_id,
         member_name=member_name,
     )
@@ -141,13 +144,14 @@ async def tool_trello_create_card(
 
 @mcp_server.tool(
     name="trello_update_card",
-    description="Update title, description, due date, and/or assign a member to an existing Trello card.",
+    description="Update title, description, due date, start date, and/or assign a member to an existing Trello card.",
 )
 async def tool_trello_update_card(
     card_id: str,
     name: Optional[str] = None,
     desc: Optional[str] = None,
     due_date: Optional[str] = None,
+    start_date: Optional[str] = None,
     member_name: Optional[str] = None,
     board_id: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -156,6 +160,7 @@ async def tool_trello_update_card(
         name=name,
         desc=desc,
         due_date=due_date,
+        start_date=start_date,
         member_name=member_name,
         board_id=board_id,
     )

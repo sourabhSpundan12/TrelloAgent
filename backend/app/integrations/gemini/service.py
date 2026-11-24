@@ -145,5 +145,8 @@ class GeminiService:
         self,
         command: str,
         discovered_tools: List[DiscoveredToolItem],
+        conversation_history: Optional[List[Dict[str, Any]]] = None,
     ) -> GeminiIntentOutput:
-        return self.ai_service._fallback_deterministic_interpreter(command, discovered_tools)
+        return self.ai_service._fallback_deterministic_interpreter(
+            command, discovered_tools, conversation_history=conversation_history
+        )

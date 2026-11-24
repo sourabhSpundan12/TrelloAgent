@@ -24,6 +24,7 @@ from app.core.logging import logger
 from app.core.security import compute_payload_hash
 from app.tool_executor.interfaces import ExecutionContext
 from app.tool_executor.service import ToolExecutorService
+from app.services.template_service import TemplateService
 
 settings = Settings()
 
@@ -56,7 +57,12 @@ class ApprovalService:
                 return d_clean
 
         # Intelligent domain-aware descriptions directly aligned with the title
-        if any(k in t_lower for k in ("backend", "server", "api", "endpoint", "microservice")):
+        if any(k in t_lower for k in ("auth", "login", "register", "signup", "password", "jwt", "oauth")):
+            return (
+                f"Implement secure authentication workflows, credential hashing, token lifecycle, and session verification for '{clean_title}'. "
+                "Enforce role-based access control, route protection, and security audit compliance."
+            )
+        elif any(k in t_lower for k in ("backend", "server", "api", "endpoint", "microservice")):
             return (
                 f"Design, develop, and test backend architecture, API endpoints, database interactions, and business logic for '{clean_title}'. "
                 "Ensure robust error handling, schema validation, performance optimization, and comprehensive unit test coverage."
@@ -65,11 +71,6 @@ class ApprovalService:
             return (
                 f"Build and refine responsive user interface components and client-side interactions for '{clean_title}'. "
                 "Ensure accessibility standards, seamless backend API integration, state management, and cross-browser reliability."
-            )
-        elif any(k in t_lower for k in ("auth", "login", "register", "signup", "password", "jwt", "oauth")):
-            return (
-                f"Implement secure authentication workflows, credential hashing, token lifecycle, and session verification for '{clean_title}'. "
-                "Enforce role-based access control, route protection, and security audit compliance."
             )
         elif any(k in t_lower for k in ("database", "db", "mongo", "postgres", "sql", "migration", "schema")):
             return (
@@ -151,6 +152,33 @@ class ApprovalService:
         )
         title = str(raw_name).strip()
 
+        # Defensive sanitization: Strip leaked time clauses from title (e.g. "Register and time is 12:00 PM")
+        time_leak = re.search(
+            r"(?:and\s+)?(?:at\s+(?:the\s+)?time\s+(?:of\s+)?|at\s+|time\s*(?:is|was|will\s+be|should\s+be|[:=])?\s*|timing\s*(?:is|[:=])?\s*|by\s+|@\s*)(?:\b\d{1,2}(?::\d{2})?(?::\d{2})?\s*(?:am|pm)\b|\b(?:[01]?\d|2[0-3]):[0-5]\d\b)",
+            title,
+            re.IGNORECASE,
+        )
+        if time_leak:
+            t_leak_str = time_leak.group(0)
+            t_val = re.search(r"(\b\d{1,2}(?::\d{2})?(?::\d{2})?\s*(?:am|pm)\b|\b(?:[01]?\d|2[0-3]):[0-5]\d\b)", t_leak_str, re.IGNORECASE)
+            title = title.replace(t_leak_str, " ").strip()
+            title = re.sub(r"\btime\s+(?:is|was|will\s+be|should\s+be)\b", "", title, flags=re.IGNORECASE).strip()
+            title = re.sub(r"^(?:and|with|to|is|for)\s+", "", title, flags=re.IGNORECASE).strip()
+            title = re.sub(r"\s+(?:and|with|at|time|is)$", "", title, flags=re.IGNORECASE).strip()
+            title = re.sub(r"\s+", " ", title).strip()
+
+            if t_val:
+                extracted_t = t_val.group(1).strip()
+                cur_due = parameters.get("due_date") or parameters.get("new_due_date")
+                if cur_due and isinstance(cur_due, str) and not re.search(r"(?:\d{1,2}:\d{2}|am|pm)", cur_due, re.IGNORECASE):
+                    parameters["due_date"] = f"{cur_due} {extracted_t}"
+                elif not cur_due:
+                    cur_start = parameters.get("start_date") or parameters.get("start")
+                    if cur_start and isinstance(cur_start, str) and not re.search(r"(?:\d{1,2}:\d{2}|am|pm)", cur_start, re.IGNORECASE):
+                        parameters["start_date"] = f"{cur_start} {extracted_t}"
+                    else:
+                        parameters["due_date"] = extracted_t
+
         # Resolve board
         target_board_id = board_id or parameters.get("board_id") or settings.TRELLO_BOARD_ID or None
         target_board_name = board_name
@@ -221,7 +249,12 @@ class ApprovalService:
             list_name = resolved_list_name
             list_id = resolved_list_id
         elif action_type == "CREATE_LIST":
-            description = f"Create new column/list '{title}' on the board."
+            raw_names = parameters.get("names")
+            if raw_names and isinstance(raw_names, list) and len(raw_names) > 1:
+                title = ", ".join(str(n).strip() for n in raw_names if str(n).strip())
+                description = f"Create {len(raw_names)} new columns/lists on the board: {title}."
+            else:
+                description = f"Create new column/list '{title}' on the board."
         elif action_type == "MOVE_CARD":
             raw_desc = parameters.get("desc") or parameters.get("description")
             has_explicit_desc = bool(
@@ -259,25 +292,39 @@ class ApprovalService:
 
                 description = existing_card_desc.strip() if existing_card_desc else ""
         elif action_type == "UPDATE_CARD":
-            raw_desc = parameters.get("desc") or parameters.get("description") or parameters.get("new_description")
-            member_name = parameters.get("member_name") or parameters.get("assignee")
-            new_due = parameters.get("new_due_date") or parameters.get("due_date") or parameters.get("due") or parameters.get("date")
-            new_title_param = parameters.get("new_name") or parameters.get("new_title")
-
-            updates = []
-            if new_title_param:
-                updates.append(f"rename to '{new_title_param}'")
-            if new_due:
-                updates.append(f"set due date to '{new_due}'")
-            if member_name:
-                updates.append(f"assign member '{member_name}'")
-            if raw_desc and "task created via agentic assistant" not in str(raw_desc).lower() and str(raw_desc).strip() != "":
-                updates.append(f"update notes to '{raw_desc}'")
-
-            if updates:
-                description = f"Update card '{title}': {', '.join(updates)}."
+            raw_desc = parameters.get("new_description") or parameters.get("desc") or parameters.get("description")
+            has_explicit_desc = bool(
+                raw_desc
+                and "task created via agentic assistant" not in str(raw_desc).lower()
+                and str(raw_desc).strip() != ""
+                and not str(raw_desc).strip().lower().startswith("update card '")
+            )
+            if has_explicit_desc:
+                description = str(raw_desc).strip()
             else:
-                description = f"Update card '{title}' on the board."
+                existing_card_desc = None
+                if settings.TRELLO_API_KEY and settings.TRELLO_TOKEN:
+                    try:
+                        from app.mcp_server import trello_tools
+                        board_id_val = parameters.get("board_id") or settings.TRELLO_BOARD_ID or None
+                        cards_res = await trello_tools.trello_list_cards(board_id=board_id_val)
+                        matched_c = find_best_matching_card(cards_res.get("cards", []), title)
+                        if matched_c and matched_c.get("desc"):
+                            existing_card_desc = matched_c["desc"]
+                    except Exception:
+                        pass
+
+                if not existing_card_desc and self.db is not None:
+                    try:
+                        t_doc = await self.db["task_assignments"].find_one(
+                            {"task_title": {"$regex": f"^{re.escape(title)}$", "$options": "i"}}
+                        )
+                        if t_doc and t_doc.get("task_description"):
+                            existing_card_desc = t_doc["task_description"]
+                    except Exception:
+                        pass
+
+                description = existing_card_desc.strip() if existing_card_desc else ""
         elif action_type in ("ARCHIVE_CARD", "DELETE_CARD"):
             raw_target = title.strip()
             if parameters.get("list_name") or any(k in raw_target.lower() for k in ("guide", "list", "column", "starter", "started", "tasks")):
@@ -286,10 +333,36 @@ class ApprovalService:
                 description = f"Permanently archive / delete card '{title}' from Trello board."
         else:
             raw_desc = parameters.get("desc") or parameters.get("description")
-            description = self._generate_related_description(title, command, raw_desc)
+            is_custom_note = False
+            if raw_desc:
+                d_clean = str(raw_desc).strip()
+                d_lower = d_clean.lower()
+                is_echo = (
+                    re.match(r"^(?:create|add|new)\s+(?:a\s+)?(?:task\s+card|card|task)\b", d_lower)
+                    or ("with due date" in d_lower and ("assigned to" in d_lower or "add member" in d_lower))
+                    or d_lower.startswith("create ")
+                    or ("due date" in d_lower and "assigned to" in d_lower)
+                    or "task created via agentic assistant" in d_lower
+                    or (command and d_clean.lower() == command.lower())
+                )
+                if not is_echo:
+                    description = d_clean
+                    is_custom_note = True
 
-        # Resolve priority & due date
+            if not is_custom_note:
+                if self.db is not None:
+                    matched = await TemplateService.match_template_for_title(title, self.db)
+                    description = matched or self._generate_related_description(title, command, raw_desc)
+                else:
+                    description = self._generate_related_description(title, command, raw_desc)
+
+        # Resolve priority & dates
         priority = (parameters.get("priority") or "MEDIUM").upper()
+        start_date = (
+            parameters.get("start_date")
+            or parameters.get("start")
+            or None
+        )
         due_date = (
             parameters.get("due_date")
             or parameters.get("new_due_date")
@@ -299,6 +372,7 @@ class ApprovalService:
         )
         if is_bulk_delete:
             priority = "URGENT" if cards_count > 0 else "HIGH"
+            start_date = None
             due_date = None
 
         # Build clean execution parameters
@@ -326,16 +400,25 @@ class ApprovalService:
                 exec_params.pop("desc", None)
                 exec_params.pop("description", None)
         elif action_type == "UPDATE_CARD":
-            if parameters.get("desc") or parameters.get("description") or parameters.get("new_description"):
-                exec_params["desc"] = parameters.get("desc") or parameters.get("description") or parameters.get("new_description")
+            raw_explicit_desc = parameters.get("desc") or parameters.get("description") or parameters.get("new_description")
+            if raw_explicit_desc and "task created via agentic assistant" not in str(raw_explicit_desc).lower() and str(raw_explicit_desc).strip() != "":
+                exec_params["desc"] = str(raw_explicit_desc).strip()
+            else:
+                exec_params.pop("desc", None)
+                exec_params.pop("description", None)
+                exec_params.pop("new_description", None)
             if parameters.get("member_name"):
                 exec_params["member_name"] = parameters.get("member_name")
             if due_date:
                 exec_params["new_due_date"] = due_date
                 exec_params["due_date"] = due_date
+            if start_date:
+                exec_params["start_date"] = start_date
+        if start_date:
+            exec_params["start_date"] = start_date
         if due_date:
             exec_params["due_date"] = due_date
-        if target_board_id and "board_id" not in exec_params:
+        if target_board_id:
             exec_params["board_id"] = target_board_id
         if list_id and "list_id" not in exec_params:
             exec_params["list_id"] = list_id
@@ -356,6 +439,7 @@ class ApprovalService:
             list_name=list_name,
             list_id=list_id,
             priority=priority,
+            start_date=start_date,
             due_date=due_date,
             parameters=exec_params,
         )
@@ -505,11 +589,14 @@ class ApprovalService:
 
         draft_params = dict(locked.get("draft", {}).get("parameters", {}))
         board_id_val = locked.get("draft", {}).get("board_id") or locked.get("board_id")
-        if board_id_val and "board_id" not in draft_params:
+        if board_id_val:
             draft_params["board_id"] = board_id_val
         due_val = locked.get("draft", {}).get("due_date") or locked.get("due_date")
         if due_val and not draft_params.get("due_date") and not draft_params.get("due"):
             draft_params["due_date"] = due_val
+        start_val = locked.get("draft", {}).get("start_date") or locked.get("start_date")
+        if start_val and not draft_params.get("start_date") and not draft_params.get("start"):
+            draft_params["start_date"] = start_val
         tool_id = locked.get("tool_id")
 
         try:

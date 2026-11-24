@@ -24,6 +24,10 @@ class ChatSessionListResponse(BaseModel):
     total: int
 
 
+class ChatSessionRenameRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=100, description="New title for chat conversation session")
+
+
 class ChatMessageSchema(BaseModel):
     id: str
     user_id: str

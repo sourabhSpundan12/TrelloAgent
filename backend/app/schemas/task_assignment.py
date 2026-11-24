@@ -103,6 +103,7 @@ class EmployeeTaskReportSummary(BaseModel):
     employee_id: str
     employee_name: Optional[str] = None
     employee_email: Optional[str] = None
+    role: Optional[str] = "MEMBER"
     assigned_count: int = 0
     in_progress_count: int = 0
     completed_count: int = 0

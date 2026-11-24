@@ -295,6 +295,16 @@ class PIIService:
                 if span_text in technical_terms or any(t in technical_terms for t in tokens):
                     continue
 
+                hindi_grammar_words = {
+                    "naam", "name", "kaam", "banao", "bana", "karo", "kardo", "karna", "dalo", "daal",
+                    "hatao", "hata", "bhej", "bhejo", "shift", "de", "do", "dena", "hai", "hain",
+                    "ka", "ki", "ke", "ko", "liye", "mein", "me", "mai", "se", "par", "pe", "ek",
+                    "naya", "wali", "wala", "vale", "karna", "karega", "rakho", "rakhna", "kuch",
+                    "kisi", "batao", "kaun", "kisko", "kise", "yeh", "ye", "woh", "wo"
+                }
+                if span_text in hindi_grammar_words or any(t in hindi_grammar_words for t in tokens if len(tokens) == 1):
+                    continue
+
                 # Context check: Check if span immediately follows card creation prefix
                 # e.g. "create a task card Full Stack" or "create a task card Logout"
                 prefix_text = text[:r.start].lower().strip()

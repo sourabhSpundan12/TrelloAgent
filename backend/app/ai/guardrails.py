@@ -144,7 +144,8 @@ class LLMGuardrails:
         canonical_ids = {
             "trello_create_card", "trello_move_card", "trello_update_card",
             "trello_delete_card", "trello_archive_card", "trello_search_cards",
-            "trello_create_list", "report_get_workload", "report_get_employee_tasks"
+            "trello_create_list", "report_get_workload", "report_get_employee_tasks",
+            "employee_recommend_assignment", "employee_list_directory"
         }
         all_valid_ids = valid_tool_ids.union(canonical_ids)
 
@@ -177,5 +178,24 @@ class LLMGuardrails:
                 sanitized_params[k] = v
 
         output.parameters = sanitized_params
+        output.action_parameters = dict(sanitized_params)
+
+        # Template Validation (Never allow hallucinated or invalid template IDs)
+        if output.selected_template:
+            from app.services.template_service import BUILTIN_TEMPLATES
+            known_ids = {t["id"] for t in BUILTIN_TEMPLATES}
+            if output.selected_template not in known_ids and not output.selected_template.startswith("tmpl_custom_"):
+                logger.info(f"Output Guardrail: Resetting invalid selected_template '{output.selected_template}' to None.")
+                output.selected_template = None
+
+        # Low-Confidence & Ambiguity Guardrail (Never execute low-confidence or ambiguous actions)
+        if output.confidence < 0.6 or output.missing_fields:
+            output.requires_clarification = True
+            if not output.clarification_message:
+                if output.missing_fields:
+                    output.clarification_message = f"Please clarify the following missing details: {', '.join(output.missing_fields)}."
+                else:
+                    output.clarification_message = "Your request seems ambiguous. Could you please provide more details?"
+
         return output
 

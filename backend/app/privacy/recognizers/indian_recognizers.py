@@ -172,7 +172,10 @@ class TaskMemberNameRecognizer(PatternRecognizer):
         "as", "to", "for", "please", "ask", "also", "card", "task", "list", "the",
         "this", "that", "his", "her", "their", "of", "new", "a", "an", "it", "them",
         "him", "her", "me", "us", "you", "its", "my", "our", "your", "ticket",
-        "issue", "item", "board", "all", "some", "any", "these", "those"
+        "issue", "item", "board", "all", "some", "any", "these", "those",
+        "is", "ye", "yeh", "woh", "ko", "ke", "liye", "mein", "me", "karo", "kardo",
+        "karna", "hai", "hain", "banao", "bana", "do", "dalo", "daal", "pe", "par",
+        "naam", "name", "kaam", "bhej", "bhejo", "shift", "ek", "naya", "wali", "wala"
     }
 
     TECHNICAL_EXCLUSIONS = {
@@ -180,7 +183,7 @@ class TaskMemberNameRecognizer(PatternRecognizer):
         "review", "doing", "in-review", "feature", "bug", "endpoint",
         "login", "api", "auth", "authentication", "backend", "frontend", "new",
         "it", "this", "that", "them", "him", "her", "me", "us", "you", "ticket",
-        "issue", "item"
+        "issue", "item", "is card", "ye card", "yeh card", "is task", "ye task"
     }
 
     PATTERNS = [
@@ -192,6 +195,11 @@ class TaskMemberNameRecognizer(PatternRecognizer):
         Pattern(
             name="assign_name_to_context",
             regex=r"\b(?:assign|add)\s+([a-zA-Z]{2,}(?:\s+[a-zA-Z]{2,}){0,2})\s+to\b",
+            score=0.85,
+        ),
+        Pattern(
+            name="hindi_hinglish_member_context",
+            regex=r"\b([a-zA-Z]{2,}(?:\s+[a-zA-Z]{2,}){0,2})\s+(?:ke\s+liye|ko|ko\s+bhi|ke\s+saath)\b",
             score=0.85,
         ),
         Pattern(

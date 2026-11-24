@@ -20,6 +20,7 @@ import { EmptyState } from '../components/common/EmptyState';
 import { useAuth } from '../context/AuthContext';
 import { useBoard } from '../context/BoardContext';
 import { fetchTrelloTasks } from '../services/api';
+import { formatISTDate, formatISTDateTime } from '../utils/dateUtils';
 
 export const TasksPage: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -125,6 +126,16 @@ export const TasksPage: React.FC = () => {
       return ln.includes('done') || ln.includes('completed');
     }).length;
   }, [filteredCards]);
+
+  const visibleLists = useMemo(() => {
+    if (selectedList === 'ALL') {
+      return lists.length > 0 ? lists : [{ id: 'all', name: 'All Cards' }];
+    }
+    const matched = lists.filter(
+      (l) => l.id === selectedList || l.name?.toLowerCase() === selectedList.toLowerCase()
+    );
+    return matched.length > 0 ? matched : [{ id: selectedList, name: selectedList }];
+  }, [lists, selectedList]);
 
   return (
     <div className="space-y-6">
@@ -317,8 +328,16 @@ export const TasksPage: React.FC = () => {
         </Card>
       ) : viewMode === 'board' ? (
         /* Board Columns View */
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {(lists.length > 0 ? lists : [{ id: 'all', name: 'All Cards' }]).map((list) => {
+        <div
+          className={`grid gap-6 ${
+            visibleLists.length === 1
+              ? 'grid-cols-1 max-w-xl'
+              : visibleLists.length === 2
+              ? 'grid-cols-1 md:grid-cols-2'
+              : 'grid-cols-1 md:grid-cols-3'
+          }`}
+        >
+          {visibleLists.map((list) => {
             const listCards =
               list.id === 'all'
                 ? filteredCards
@@ -388,7 +407,7 @@ export const TasksPage: React.FC = () => {
                           {card.due ? (
                             <span className="flex items-center space-x-1 text-slate-500">
                               <Calendar className="w-3 h-3" />
-                              <span>{new Date(card.due).toLocaleDateString()}</span>
+                              <span>{formatISTDateTime(card.due)}</span>
                             </span>
                           ) : (
                             <span className="text-slate-400 italic">No due date</span>
@@ -447,7 +466,7 @@ export const TasksPage: React.FC = () => {
                         <Badge variant="neutral">{card.list_name || 'List'}</Badge>
                       </td>
                     <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">
-                      {card.due ? new Date(card.due).toLocaleDateString() : '—'}
+                      {card.due ? formatISTDateTime(card.due) : '—'}
                     </td>
                     <td className="py-3 px-4 font-mono text-slate-400 text-[10px]">
                       {card.id}

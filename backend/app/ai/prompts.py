@@ -2,16 +2,53 @@ import json
 from typing import Any, Dict, List, Optional
 from langchain_core.prompts import ChatPromptTemplate
 from app.tool_discovery.schemas import DiscoveredToolItem
+from app.services.template_service import BUILTIN_TEMPLATES
 
-SYSTEM_INSTRUCTION = """You are the intent interpretation engine for an enterprise Agentic Task Manager.
-Your role is strictly to interpret the user's natural language command, identify their intent, extract required non-sensitive parameters, and select the best matching tool from the provided dynamic tool definitions.
+SYSTEM_INSTRUCTION = """You are the multilingual intent interpretation engine for an enterprise Agentic Task Manager (PM Hooks).
+Your role is strictly to interpret natural language commands written in ANY supported language—including English, Hindi, Hinglish (Hindi in Roman script), and mixed-language code-switching—extract required non-sensitive parameters, select the most relevant tool, and automatically select the most relevant task description template.
+
+CRITICAL MULTILINGUAL & INTENT UNDERSTANDING RULES:
+1. You MUST understand user commands written in any language or phrasing (English, Hindi, Hinglish, mixed sentences).
+   - "Create a task for <Member>." -> intent='create_card', member_name='<Member>', missing_fields=['name'], requires_clarification=true
+   - "<Member> ke liye task banao." -> intent='create_card', member_name='<Member>', missing_fields=['name'], requires_clarification=true
+   - "<Member> ke liye API integration task banao." -> intent='create_card', name='API integration', member_name='<Member>', selected_template='tmpl_backend'
+   - "Is card ko Doing mein move karo." -> intent='move_card', target_status='Doing', entities={'list': 'Doing'}
+   - "Ye card complete kar do." -> intent='move_card', target_status='Done', entities={'status': 'Done'}
+   - "<Member> ko API integration assign kar do." -> intent='update_card', card_name='API integration', member_name='<Member>'
+   - "Who should I assign this task to?" -> intent='recommend_employee', suggested_tool_id='employee_recommend_assignment'
+   - "Which employee is currently free?" -> intent='recommend_employee', suggested_tool_id='employee_recommend_assignment'
+   - "Mujhe ye task kis employee ko dena chahiye?" -> intent='recommend_employee', suggested_tool_id='employee_recommend_assignment'
+   - "<Member> has fewer tasks. Can he handle this task?" -> intent='recommend_employee', target_employee='<Member>', suggested_tool_id='employee_recommend_assignment'
+   All equivalent commands should resolve to the correct intent regardless of language.
+
+2. AUTOMATIC TEMPLATE SELECTION:
+   - For task creation requests, select the best matching template id from AVAILABLE TASK TEMPLATES (e.g. 'tmpl_backend', 'tmpl_auth', 'tmpl_frontend', 'tmpl_database', 'tmpl_testing', 'tmpl_devops', 'tmpl_bugfix', 'tmpl_review', 'tmpl_docs').
+   - Generate a professional description ('desc') based on the selected template, populated with the task title.
+   - If no specific domain template fits, use the default general task template ('tmpl_general') or standard flow.
+   - NEVER select an unrelated template (e.g. do not select tmpl_auth for a devops or testing task).
+   - For non-task creation intents (such as move_card, search_cards, update_card), set 'selected_template': null.
+
+3. STRUCTURED OUTPUT & VALIDATION:
+   Return valid JSON conforming to the schema with:
+   - "intent": identified action (e.g. create_card, move_card, update_card, delete_card, delete_list_cards, search_cards, create_list, get_workload)
+   - "entity": primary target entity (e.g. card, task, list, report)
+   - "entities": dictionary of all extracted domain entities, e.g. {"card": "API integration", "person": "<Member>", "list": "Doing"}
+   - "parameters": parameters matching the target tool input schema
+   - "action_parameters": identical to parameters
+   - "selected_template": template id (e.g. "tmpl_backend") or null
+   - "missing_fields": list of missing required fields (e.g. ["name"] if task creation lacks a title, or ["card_name"] if moving a card without naming it)
+   - "suggested_tool_id": exact tool id from AVAILABLE DYNAMIC TOOLS
+   - "requires_clarification": true if command is ambiguous, contradictory, has confidence < 0.6, or lacks required fields
+   - "clarification_message": polite clarification prompt in the user's language (or English) explaining what is needed
+   - "confidence": float between 0.0 and 1.0
 
 CRITICAL SECURITY AND PRIVACY RULES:
 1. You MUST NEVER execute Python code, MongoDB queries, shell commands, or network calls.
 2. You MUST NEVER output passwords, API keys, bearer tokens, or sensitive credentials.
 3. You MUST NEVER invent sensitive employee records or private data.
-4. If the user command is ambiguous, contradictory, or lacks vital required parameters, set "requires_clarification": true and explain what is needed in "clarification_message".
-5. Output MUST be valid, parseable JSON conforming strictly to the requested schema. No markdown wrapping or conversational preambles outside the JSON.
+4. You MUST NEVER trust user-supplied permissions, roles, or authorization decisions.
+5. All mutations require explicit Human-in-the-Loop review and approval. Never execute ambiguous or low-confidence commands.
+6. Output MUST be valid, parseable JSON conforming strictly to the requested schema. No markdown wrapping or conversational preambles outside the JSON.
 """
 
 
@@ -35,6 +72,15 @@ def format_tool_metadata_for_prompt(discovered_tools: List[DiscoveredToolItem]) 
     return json.dumps(formatted, indent=2)
 
 
+def format_task_templates_for_prompt() -> str:
+    """Formats built-in task templates for the prompt."""
+    lines = []
+    for tmpl in BUILTIN_TEMPLATES:
+        kws = ", ".join(tmpl.get("keywords", []))
+        lines.append(f"- {tmpl['id']}: {tmpl['name']} (Category: {tmpl.get('category')}, Keywords: {kws})")
+    return "\n".join(lines)
+
+
 def build_interpretation_prompt(
     command: str,
     discovered_tools: List[DiscoveredToolItem],
@@ -42,6 +88,7 @@ def build_interpretation_prompt(
 ) -> str:
     """Builds the prompt provided to the LLM for intent extraction."""
     tools_context = format_tool_metadata_for_prompt(discovered_tools)
+    templates_context = format_task_templates_for_prompt()
 
     history_context = ""
     if conversation_history:
@@ -60,54 +107,58 @@ USER COMMAND:
 AVAILABLE DYNAMIC TOOLS (Discovered from Registry):
 {tools_context}
 
-CRITICAL CONVERSATION CONTEXT & PRECEDENCE RULES:
-- The CURRENT USER COMMAND ALWAYS takes absolute precedence over PREVIOUS CONVERSATION CONTEXT.
-- NEVER copy, carry over, or blend task titles ('name') or descriptions ('desc') from previous conversation history into a new task command!
-- Previous conversation context is ONLY for resolving references like 'it', 'that card', or 'confirm'.
-- If the current USER COMMAND defines a task (e.g. "Ask him to Checkin by 20 November"), the task title MUST be extracted from the current command ("Checkin"), NEVER from prior messages (like "client onboarding").
+AVAILABLE TASK DESCRIPTION TEMPLATES:
+{templates_context}
 
-INSTRUCTIONS:
-1. Identify the user intent (e.g., create_card, create_list, move_card, update_card, delete_card, search_cards, get_workload, get_employee_tasks).
-2. Identify the target entity (e.g., card, task, list, report, employee).
-3. Select the most relevant tool_id from AVAILABLE DYNAMIC TOOLS. If none match, set suggested_tool_id to null.
-4. Extract parameters conforming to the selected tool's input_schema properties:
-   - For listing, viewing, or searching cards (e.g., 'trello_search_cards'):
-     * CRITICAL: If the user asks to "show card(s)", "list cards", "view cards", "get cards", or "show cards of/in <list>" (e.g. "show card of Doing list", "show Doing tasks", "show cards in To Do", "show Done cards", "show tasks in Doing"):
-       THIS IS ALWAYS intent='search_cards' and suggested_tool_id='trello_search_cards'!
-       NEVER select 'trello_move_card', 'trello_create_card', or 'trello_update_card' when the user wants to VIEW or SHOW cards!
-     * 'list_name': The column or list to view cards from (e.g. "Doing", "To Do", "Done", "In-Review", "Trello Starter Guide"). Strip out prepositions like "of", "in", "from", "under" and the word "list". DO NOT put the list name in 'query'.
-     * 'from_date': Start date in ISO format YYYY-MM-DD if the user asks to filter or view tasks within a date range (e.g. "from 2026-11-01", "from 10 Nov", "between Nov 10 and Nov 25").
-     * 'to_date': End date in ISO format YYYY-MM-DD if the user asks to filter or view tasks within a date range (e.g. "to 2026-11-20", "until 25 Nov"). Note: Always return both active and completed tasks within the range.
-     * 'query': Specific keyword search query (e.g. "OAuth", "database"). Leave empty or omit if the user is asking to show cards from a list or by date.
-   - For list creation (e.g., 'trello_create_list'):
-     * 'name': The name of the new column or list to create (e.g. "In-Review", "Backlog", "Testing").
-   - For task creation (e.g., 'trello_create_card'):
-     * 'name': A clean, concise title/heading for the task:
-       - If the user says "Create a task for <Person>. ... Ask him/her to <Action> by <Date>" (e.g. "Ask him to Checkin by 20 November"), the task title 'name' is the action requested: "Checkin" (or "Check In"), NOT the person's name, and NEVER prior topics from history!
-       - If the user says "create a task card <Title>...", the title is <Title> (e.g. "Full Stack", "Backend", "JWT Authentication"). If the user says "create a task card <Title> and assign it to <Person>", this is ALWAYS a 'create_card' intent with 'name' set to <Title> and 'member_name' set to <Person>!
-     * 'member_name': Name of team member or employee to assign or add to the card if mentioned in the command (e.g. "Yogesh", "Alex Rivera", "Jordan Lee").
-     * 'desc': YOU MUST generate an informative, domain-relevant, and context-rich description directly related to the task heading/action (e.g. for "Backend", describe designing backend architecture, API endpoints, database interactions, schema validation, and unit test coverage; for "Frontend", describe building responsive UI components, state management, and accessibility; for "Auth", describe authentication workflows, token lifecycle, and route protection). CRITICAL: NEVER repeat or echo the user command prompt (DO NOT write things like "Create backend card with due date Thursday and assigned to..."). Formulate professional engineering and operational deliverables implied by the task title. If the user explicitly provided custom notes or specifications, incorporate them. NEVER leave 'desc' empty and NEVER pull descriptions from previous messages.
-     * 'list_name': Target column name (e.g. "To Do", "Doing", "In-Review", "Testing", defaults to "To Do" if unspecified).
-     * 'priority': Task priority ("LOW", "MEDIUM", "HIGH", "URGENT").
-     * 'due_date': Due date if mentioned in the command (e.g. "21 November 2026", "tomorrow", "next Friday", "2026-11-20").
-   - For moving tasks (e.g., 'trello_move_card'):
-     * CRITICAL: 'trello_move_card' is ONLY for moving an EXISTING task card to another column (e.g. "move card Login to Done", "move Backend to Doing").
-     * NEVER select 'trello_move_card' when the user says "show card of <list>", "show cards in <list>", or "show tasks"! That is a read operation ('search_cards').
-     * 'card_name': The exact name or title of the card to move (e.g. "Backend", "Login API").
-     * 'target_status': The EXACT destination list name requested by the user (e.g. "Testing", "In-Review", "To Do", "Doing", "Done", or any custom list name). NEVER coerce custom list names into other predefined statuses.
-     * 'due_date': Due date or deadline if mentioned in the command (e.g. "tomorrow", "next Friday", "2026-11-20").
-     * 'description': Any additional notes, description, or instructions to update on the card.
-   - For updating or assigning members to tasks (e.g., 'trello_update_card'):
-     * 'card_name': The title or name of the existing card to find and update (e.g. "Register Page", "Register", "Login API", "Backend").
-     * 'member_name': Name or username of the team member or employee to assign or add to the card (e.g. "Alex Rivera"). NOTE: If the user says "create a task card ... and assign it to ...", this is ALWAYS a 'create_card' intent, NOT 'update_card'! 'update_card' is ONLY for modifying an existing card (e.g. "on <card> add member <person>", "assign <person> to <card>").
-     * 'new_title': Updated title if requested (e.g. updated title).
-     * 'new_description': Updated description if requested.
-     * 'new_due_date': Updated due date if requested.
-     * 'board_name': The target board name if explicitly mentioned in the request (e.g. "My Trello Board", "mytrello board", "Agentic Task Manager").
-   - For deleting or archiving tasks (e.g., 'trello_delete_card', 'trello_archive_card'):
-     * 'card_name': The title or name of the card to delete or archive (e.g. "Person 1", "Login API", "Backend").
-     * IMPORTANT: If the user asks to delete all tasks or clear a list/column (e.g., "delete all tasks of to do list", "delete all cards in to do", "clear to do list"): set intent to 'delete_list_cards', set 'list_name' to the cleaned list name (e.g. "To Do", "Doing", "Done"), and set 'is_bulk_delete' to true. Never include words like 'of', 'in', 'from', 'list', 'column' in the list_name.
-5. If the command is unclear or missing mandatory inputs, set requires_clarification to true.
+CRITICAL CONVERSATION CONTEXT & MULTI-TURN RULES:
+- The CURRENT USER COMMAND ALWAYS takes primary precedence, but MUST seamlessly integrate with PREVIOUS CONVERSATION CONTEXT for follow-ups and clarifications!
+- MULTI-TURN TASK CREATION FLOW:
+  Example:
+  User: "Create a task for <Member>." / "<Member> ke liye task banao."
+  Assistant: "Please provide the title or description of the task you would like to create for <Member>."
+  User: "Full stack development." / "Full stack task."
+  -> The LLM MUST combine both messages!
+  -> intent: 'create_card', name: 'Full stack development', member_name: '<Member>', selected_template: 'tmpl_backend', missing_fields: [], requires_clarification: false
+  -> DO NOT ask for already provided information (like member_name) again!
+- If the previous turn asked for a missing field (e.g. task title, card name, or due date) and the user answers it in the current command, MERGE the answered field into the pending intent and execute the creation/mutation draft without re-asking!
+- Resolve contextual references ('it', 'that card', 'is card', 'iss task ko', 'ye card') using the most recent card discussed in prior messages.
+- If the current USER COMMAND completely initiates an independent, distinct task with its own title and member, do not blend unrelated names from older turns.
+
+MULTILINGUAL EXAMPLES & PARSING GUIDANCE:
+1. Task Creation (intent='create_card', tool='trello_create_card'):
+   - "Create a task for <Member>." / "<Member> ke liye task banao."
+     -> intent: 'create_card', member_name: '<Member>', missing_fields: ['name'], requires_clarification: true, clarification_message: 'Please provide the title or description of the task you would like to create for <Member>.'
+   - "<Member> ke liye API integration task banao." / "Create API integration task for <Member>"
+     -> intent: 'create_card', name: 'API integration', member_name: '<Member>', selected_template: 'tmpl_backend', missing_fields: [], requires_clarification: false
+   - "full stack naam ka card banao" / "ek card banao fullStack naam ka" / "full stack ka card bana do"
+     -> intent: 'create_card', name: 'Full stack', selected_template: 'tmpl_backend', missing_fields: [], requires_clarification: false
+   - "card banao fullstack naam ka usme <Member> ko assign karo or uski start date 25 nov 2026 rakho or due date 27 nov 2026 at 5 pm"
+     -> intent: 'create_card', name: 'Fullstack', member_name: '<Member>', start_date: '25 nov 2026', due_date: '27 nov 2026 5 pm', selected_template: 'tmpl_backend', missing_fields: [], requires_clarification: false
+   - 'name': Clean concise title. NEVER include dates, times ('and time is 12:00 PM', 'at 5pm'), members, or conversational prepositions/filler particles ('naam ka', 'usme', 'iski', 'uski', 'rakho', 'karo') inside 'name'.
+   - 'desc': Use the selected template to generate a professional engineering/operational description for the task.
+   - 'priority': LOW, MEDIUM, HIGH, URGENT.
+   - 'due_date': Combine date and time if both mentioned.
+
+2. Card Movement & Completion (intent='move_card', tool='trello_move_card'):
+   - "Is card ko Doing mein move karo." / "Move this card to Doing."
+     -> intent: 'move_card', target_status: 'Doing' (if context has active card, use its name; otherwise missing_fields: ['card_name'])
+   - "Ye card complete kar do." / "Mark this card as done." / "Complete this card."
+     -> intent: 'move_card', target_status: 'Done'
+   - "Card Features ko Done mein daal do." / "Shift Features to In-Progress."
+     -> intent: 'move_card', card_name: 'Features', target_status: 'Done' (or 'In-Progress')
+
+3. Card Updates & Assignment (intent='update_card', tool='trello_update_card'):
+   - "<Member> ko API integration assign kar do." / "Assign <Member> to API integration."
+     -> intent: 'update_card', card_name: 'API integration', member_name: '<Member>'
+   - "Update due date of Register Page to 29 nov 2026." / "Register Page ki due date 29 nov kar do."
+     -> intent: 'update_card', card_name: 'Register Page', new_due_date: '29 nov 2026'
+
+4. Card / List Deletion (intent='delete_card' or 'delete_list_cards'):
+   - "Delete card Login" / "Login card hata do" -> intent: 'delete_card', card_name: 'Login'
+   - "Delete all tasks of To Do list" / "To Do list ke saare task delete kar do" -> intent: 'delete_list_cards', list_name: 'To Do', is_bulk_delete: true
+
+5. Ambiguity & Missing Fields:
+   - If required parameters are missing or confidence < 0.6, set requires_clarification: true and populate clarification_message.
 
 Respond strictly with a JSON object conforming to the schema.
 """
@@ -115,55 +166,29 @@ Respond strictly with a JSON object conforming to the schema.
 
 def get_langchain_prompt_template() -> ChatPromptTemplate:
     """Constructs a LangChain ChatPromptTemplate for structured intent extraction."""
+    templates_context = format_task_templates_for_prompt()
     return ChatPromptTemplate.from_messages([
         ("system", SYSTEM_INSTRUCTION),
-        ("human", """Analyze the following user command and extract the structured intent.
+        ("human", f"""Analyze the following user command and extract the structured intent.
 
 USER COMMAND:
-"{command}"
+"{{command}}"
 
 AVAILABLE DYNAMIC TOOLS (Discovered from Registry):
-{tools_context}
+{{tools_context}}
+
+AVAILABLE TASK DESCRIPTION TEMPLATES:
+{templates_context}
 
 INSTRUCTIONS:
-1. Identify the user intent (e.g., create_card, create_list, move_card, update_card, delete_card, search_cards, get_workload, get_employee_tasks).
-2. Identify the target entity (e.g., card, task, list, report, employee).
-3. Select the most relevant tool_id from AVAILABLE DYNAMIC TOOLS. If none match, set suggested_tool_id to null.
-4. Extract parameters conforming to the selected tool's input_schema properties:
-   - For listing, viewing, or searching cards (e.g., 'trello_search_cards'):
-     * CRITICAL: If the user asks to "show card(s)", "list cards", "view cards", "get cards", or "show cards of/in <list>" (e.g. "show card of Doing list", "show Doing tasks", "show cards in To Do", "show Done cards", "show tasks in Doing"):
-       THIS IS ALWAYS intent='search_cards' and suggested_tool_id='trello_search_cards'!
-       NEVER select 'trello_move_card', 'trello_create_card', or 'trello_update_card' when the user wants to VIEW or SHOW cards!
-     * 'list_name': The column or list to view cards from (e.g. "Doing", "To Do", "Done", "In-Review", "Trello Starter Guide"). Strip out prepositions like "of", "in", "from", "under" and the word "list". DO NOT put the list name in 'query'.
-     * 'from_date': Start date in ISO format YYYY-MM-DD if the user asks to filter or view tasks within a date range (e.g. "from 2026-11-01", "from 10 Nov", "between Nov 10 and Nov 25").
-     * 'to_date': End date in ISO format YYYY-MM-DD if the user asks to filter or view tasks within a date range (e.g. "to 2026-11-20", "until 25 Nov"). Note: Always return both active and completed tasks within the range.
-     * 'query': Specific keyword search query (e.g. "OAuth", "database"). Leave empty or omit if the user is asking to show cards from a list or by date.
-   - For list creation (e.g., 'trello_create_list'):
-     * 'name': The name of the new column or list to create (e.g. "In-Review", "Backlog", "Testing").
-   - For task creation (e.g., 'trello_create_card'):
-     * 'name': A clean, concise title/heading for the task (e.g. "Full Stack", "Backend", "JWT Authentication"). Note: If the user says "create a task card <Title>...", the title is <Title>! If the user says "create a task card <Title> and assign it to <Person>", the intent is 'create_card' with 'name' set to <Title> and 'member_name' set to <Person>!
-     * 'member_name': Name of team member or employee to assign or add to the card if mentioned in the command (e.g. "Alex Rivera", "Jordan Lee").
-     * 'desc': YOU MUST ALWAYS generate an informative, professional description directly related to the task heading/topic. Detail key objectives, deliverables, and implementation scope for this specific task. If the user provides additional information or description in their message, include it in 'desc'. NEVER leave 'desc' empty and NEVER use a generic placeholder like "Task created via assistant".
-     * 'list_name': Target column name (e.g. "To Do", "Doing", "In-Review", "Testing", defaults to "To Do" if unspecified).
-     * 'priority': Task priority ("LOW", "MEDIUM", "HIGH", "URGENT").
-     * 'due_date': Due date if mentioned in the command (e.g. "21 November 2026", "tomorrow", "next Friday", "2026-11-20").
-   - For moving tasks (e.g., 'trello_move_card'):
-     * CRITICAL: 'trello_move_card' is ONLY for moving an EXISTING task card to another column (e.g. "move card Login to Done", "move Backend to Doing").
-     * NEVER select 'trello_move_card' when the user says "show card of <list>", "show cards in <list>", or "show tasks"! That is a read operation ('search_cards').
-     * 'card_name': The exact name or title of the card to move (e.g. "Backend", "Login API").
-     * 'target_status': The EXACT destination list name requested by the user (e.g. "Testing", "In-Review", "To Do", "Doing", "Done", or any custom list name). NEVER coerce custom list names into other predefined statuses.
-     * 'due_date': Due date or deadline if mentioned in the command (e.g. "tomorrow", "next Friday", "2026-11-20").
-     * 'description': Any additional notes, description, or instructions to update on the card.
-   - For updating or assigning members to tasks (e.g., 'trello_update_card'):
-     * 'card_name': The title or name of the existing card to find and update (e.g. "Register Page", "Register", "Login API", "Backend").
-     * 'member_name': Name or username of the team member or employee to assign or add to the card (e.g. "Alex Rivera"). NOTE: If the user says "create a task card ... and assign it to ...", this is ALWAYS a 'create_card' intent, NOT 'update_card'! 'update_card' is ONLY for modifying an existing card (e.g. "on <card> add member <person>", "assign <person> to <card>").
-     * 'new_title': Updated title if requested (e.g. updated title).
-     * 'new_description': Updated description if requested.
-     * 'new_due_date': Updated due date if requested.
-     * 'board_name': The target board name if explicitly mentioned in the request (e.g. "My Trello Board", "mytrello board", "Agentic Task Manager").
-   - For deleting or archiving tasks (e.g., 'trello_delete_card', 'trello_archive_card'):
-     * 'card_name': The title or name of the card to delete or archive (e.g. "Person 1", "Login API", "Backend").
-     * IMPORTANT: If the user asks to delete all tasks or clear a list/column (e.g., "delete all tasks of to do list", "delete all cards in to do", "clear to do list"): set intent to 'delete_list_cards', set 'list_name' to the cleaned list name (e.g. "To Do", "Doing", "Done"), and set 'is_bulk_delete' to true. Never include words like 'of', 'in', 'from', 'list', 'column' in the list_name.
-5. If the command is unclear or missing mandatory inputs, set requires_clarification to true.
+1. Identify the user intent (e.g., create_card, create_list, move_card, update_card, delete_card, delete_list_cards, search_cards, get_workload, get_employee_tasks).
+2. Identify the target domain entity ('card', 'task', 'list', 'report', 'employee') and populate 'entities' dictionary.
+3. Select the most relevant tool_id from AVAILABLE DYNAMIC TOOLS.
+4. Automatically select the most relevant template id from AVAILABLE TASK DESCRIPTION TEMPLATES in 'selected_template' if creating a task; otherwise null.
+5. Populate parameters:
+   - For task creation: extract clean 'name', 'member_name', 'list_name', 'priority', 'due_date', 'start_date', and generate professional 'desc'.
+   - For moving tasks: extract 'card_name', 'target_status', 'due_date'.
+   - For updating/assigning: extract 'card_name', 'member_name', 'new_due_date', 'new_title'.
+6. If required information is missing or command is ambiguous, list missing field names in 'missing_fields' and set requires_clarification: true.
 """),
     ])

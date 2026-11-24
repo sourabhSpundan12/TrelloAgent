@@ -21,6 +21,8 @@ import {
   ResetPasswordPayload,
   TaskAssignment,
   TaskAssignmentHistoryItem,
+  TaskTemplate,
+  TaskTemplatesResponse,
   VerifyResetCodePayload,
 } from '../types';
 
@@ -333,6 +335,20 @@ export const deleteChatSession = async (
   const headers = token ? getAuthHeaders(token) : undefined;
   const response = await api.delete<{ status: string; message: string }>(
     `/api/v1/ai/sessions/${sessionId}`,
+    headers ? { headers } : undefined
+  );
+  return response.data;
+};
+
+export const renameChatSession = async (
+  sessionId: string,
+  title: string,
+  token?: string
+): Promise<{ status: string; message: string; title: string }> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.patch<{ status: string; message: string; title: string }>(
+    `/api/v1/ai/sessions/${sessionId}`,
+    { title },
     headers ? { headers } : undefined
   );
   return response.data;
@@ -733,6 +749,165 @@ export const fetchAssignmentHistory = async (
   const response = await api.get<TaskAssignmentHistoryItem[]>(
     `/api/v1/task-assignments/${assignmentId}/history`,
     headers ? { headers } : undefined
+  );
+  return response.data;
+};
+
+// ==========================================
+// Task Description Templates Management APIs
+// ==========================================
+
+export const fetchTaskTemplates = async (
+  token?: string
+): Promise<TaskTemplatesResponse> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.get<TaskTemplatesResponse>(
+    '/api/v1/templates',
+    headers ? { headers } : undefined
+  );
+  return response.data;
+};
+
+export const createTaskTemplate = async (
+  payload: {
+    name: string;
+    category?: string;
+    keywords: string[];
+    description_template: string;
+  },
+  token?: string
+): Promise<{ status: string; message: string; template: TaskTemplate }> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.post<{ status: string; message: string; template: TaskTemplate }>(
+    '/api/v1/templates',
+    payload,
+    headers ? { headers } : undefined
+  );
+  return response.data;
+};
+
+export const updateTaskTemplate = async (
+  templateId: string,
+  payload: {
+    name?: string;
+    category?: string;
+    keywords?: string[];
+    description_template?: string;
+  },
+  token?: string
+): Promise<{ status: string; message: string; template: TaskTemplate }> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.put<{ status: string; message: string; template: TaskTemplate }>(
+    `/api/v1/templates/${templateId}`,
+    payload,
+    headers ? { headers } : undefined
+  );
+  return response.data;
+};
+
+export const deleteTaskTemplate = async (
+  templateId: string,
+  token?: string
+): Promise<{ status: string; message: string; deleted_id: string }> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.delete<{ status: string; message: string; deleted_id: string }>(
+    `/api/v1/templates/${templateId}`,
+    headers ? { headers } : undefined
+  );
+  return response.data;
+};
+
+// ==========================================
+// Executive PDF Reports & Email APIs
+// ==========================================
+
+export const downloadBoardWeeklyPdf = async (
+  boardId?: string,
+  token?: string
+): Promise<Blob> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.get('/api/v1/reports/pdf/board/download', {
+    params: boardId ? { board_id: boardId } : {},
+    responseType: 'blob',
+    headers,
+  });
+  return response.data;
+};
+
+export const sendBoardWeeklyPdfEmail = async (
+  payload: { board_id?: string; admin_email?: string },
+  token?: string
+): Promise<{ status: string; message: string; recipient: string; filename: string }> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.post<{ status: string; message: string; recipient: string; filename: string }>(
+    '/api/v1/reports/pdf/board/send-email',
+    payload,
+    headers ? { headers } : undefined
+  );
+  return response.data;
+};
+
+export const downloadEmployeeWeeklyPdf = async (
+  employeeId: string,
+  employeeName?: string,
+  boardId?: string,
+  fromDate?: string,
+  toDate?: string,
+  token?: string
+): Promise<Blob> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.get('/api/v1/reports/pdf/employee/download', {
+    params: {
+      employee_id: employeeId,
+      ...(employeeName ? { employee_name: employeeName } : {}),
+      ...(boardId ? { board_id: boardId } : {}),
+      ...(fromDate ? { from_date: fromDate } : {}),
+      ...(toDate ? { to_date: toDate } : {}),
+    },
+    responseType: 'blob',
+    headers,
+  });
+  return response.data;
+};
+
+export const sendEmployeeWeeklyPdfEmail = async (
+  payload: {
+    employee_id: string;
+    employee_name?: string;
+    board_id?: string;
+    admin_email?: string;
+    from_date?: string;
+    to_date?: string;
+  },
+  token?: string
+): Promise<{ status: string; message: string; recipient: string; filename: string }> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.post<{ status: string; message: string; recipient: string; filename: string }>(
+    '/api/v1/reports/pdf/employee/send-email',
+    payload,
+    headers ? { headers } : undefined
+  );
+  return response.data;
+};
+
+export const fetchReportPreviewSummary = async (
+  context: 'board' | 'employee',
+  params?: {
+    employee_id?: string;
+    employee_name?: string;
+    board_id?: string;
+    from_date?: string;
+    to_date?: string;
+  },
+  token?: string
+): Promise<{ status: string; context: string; summary: any }> => {
+  const headers = token ? getAuthHeaders(token) : undefined;
+  const response = await api.get<{ status: string; context: string; summary: any }>(
+    '/api/v1/reports/pdf/preview-summary',
+    {
+      params: { context, ...params },
+      headers,
+    }
   );
   return response.data;
 };

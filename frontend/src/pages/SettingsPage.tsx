@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Loader2,
   X,
+  FileText,
 } from 'lucide-react';
 import { Card, CardHeader, CardContent } from '../components/common/Card';
 import { Button } from '../components/common/Button';
@@ -21,11 +22,12 @@ import { Badge } from '../components/common/Badge';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { changePassword } from '../services/api';
+import { TaskTemplatesManager } from '../components/templates/TaskTemplatesManager';
 
 export const SettingsPage: React.FC = () => {
   const { theme, setTheme } = useTheme();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'preferences' | 'theme' | 'integrations'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'preferences' | 'theme' | 'integrations' | 'templates'>('profile');
 
   // Preference toggles
   const [emailNotifications, setEmailNotifications] = useState(true);
@@ -164,6 +166,7 @@ export const SettingsPage: React.FC = () => {
             { id: 'preferences', label: 'Application Preferences', icon: Sliders },
             { id: 'theme', label: 'Appearance & Theme', icon: Sun },
             { id: 'integrations', label: 'Service Integrations', icon: Layers },
+            { id: 'templates', label: 'Task Templates', icon: FileText },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -566,6 +569,11 @@ export const SettingsPage: React.FC = () => {
                 </CardContent>
               </Card>
             </div>
+          )}
+
+          {/* 5. Task Templates Tab */}
+          {activeTab === 'templates' && (
+            <TaskTemplatesManager />
           )}
         </div>
       </div>

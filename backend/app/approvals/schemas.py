@@ -11,6 +11,7 @@ class TaskDraftSchema(BaseModel):
     list_name: Optional[str] = Field(default="To Do", description="List or column name")
     list_id: Optional[str] = Field(None, description="List ID")
     priority: Optional[str] = Field(default="MEDIUM", description="Task priority (LOW, MEDIUM, HIGH, URGENT)")
+    start_date: Optional[str] = Field(None, description="Start date string or ISO format")
     due_date: Optional[str] = Field(None, description="Due date string or ISO format")
     parameters: Dict[str, Any] = Field(default_factory=dict, description="Raw parameters sent to tool")
 
@@ -38,6 +39,7 @@ class ApprovalEditRequest(BaseModel):
     list_name: Optional[str] = None
     list_id: Optional[str] = None
     priority: Optional[str] = None
+    start_date: Optional[str] = None
     due_date: Optional[str] = None
 
 

@@ -13,6 +13,7 @@ from app.api.v1.endpoints import (
     reports,
     task_assignments,
     tasks,
+    templates,
     users,
 )
 from app.tool_discovery.routes import router as tool_discovery_router
@@ -53,6 +54,9 @@ api_v1_router.include_router(boards.router, prefix="/boards", tags=["Board Manag
 
 # Real-time Dynamic Notifications
 api_v1_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
+
+# Task Description Templates Management
+api_v1_router.include_router(templates.router, prefix="/templates", tags=["Task Templates"])
 
 # Employee Task Tracking, Assignments & Performance (Modules 1, 3, 4, 7)
 api_v1_router.include_router(task_assignments.router, prefix="/task-assignments", tags=["Task Assignments"])

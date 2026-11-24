@@ -38,6 +38,7 @@ import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { ChatMessage, ActionApprovalPreview, ApprovalEditPayload, ChatSession } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { formatISTDate, formatISTDateTime, formatISTTime, IST_TIMEZONE } from '../utils/dateUtils';
 import { useBoard } from '../context/BoardContext';
 
 export interface ModelOption {
@@ -88,7 +89,10 @@ import {
   fetchChatSessions,
   fetchSessionChatHistory,
   deleteChatSession,
+  renameChatSession,
 } from '../services/api';
+import { MarkdownRenderer } from '../components/common/MarkdownRenderer';
+import { EmployeeRecommendationPreview } from '../components/common/EmployeeRecommendationPreview';
 
 const WELCOME_MESSAGE: ChatMessage = {
   id: 'MSG-WELCOME',
@@ -103,7 +107,7 @@ const WELCOME_MESSAGE: ChatMessage = {
 • Conversational approval: You can simply reply "Confirm", "Cancel", or "Change priority to High"
 
 All write operations present a live preview draft for your confirmation before executing via Trello MCP.`,
-  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+  timestamp: formatISTTime(new Date()),
   executionStatus: 'EXECUTED',
 };
 
@@ -120,17 +124,22 @@ export const AIAssistantPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [sessionRenameValue, setSessionRenameValue] = useState<string>('');
+  const [isAssigningRecommendation, setIsAssigningRecommendation] = useState<boolean>(false);
   const [editFormData, setEditFormData] = useState<{
     title: string;
     description: string;
     listName: string;
     priority: string;
+    startDate: string;
     dueDate: string;
   }>({
     title: '',
     description: '',
     listName: 'To Do',
     priority: 'MEDIUM',
+    startDate: '',
     dueDate: '',
   });
 
@@ -163,9 +172,19 @@ export const AIAssistantPage: React.FC = () => {
   };
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const isUserSendingRef = useRef<boolean>(false);
 
-  const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (instant: boolean = false) => {
+    if (instant) {
+      if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      } else {
+        chatEndRef.current?.scrollIntoView({ behavior: 'auto' });
+      }
+    } else {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
   const createNewSessionId = () =>
@@ -207,23 +226,65 @@ export const AIAssistantPage: React.FC = () => {
     }
   };
 
-  // Format due date for presentation (e.g. 2026-11-26 -> Nov 26, 2026)
+  // Format due date for presentation (e.g. 2026-11-26 -> Nov 26, 2026, or with time -> Nov 26, 2026, 11:00 AM) in IST
   const formatDueDateDisplay = (dateStr?: string) => {
     if (!dateStr || dateStr === 'No due date') return 'No due date';
     try {
-      const parts = dateStr.split('-');
-      if (parts.length === 3) {
-        const year = parseInt(parts[0], 10);
-        const month = parseInt(parts[1], 10) - 1;
-        const day = parseInt(parts[2], 10);
-        const d = new Date(year, month, day);
+      // Check if it's pure YYYY-MM-DD
+      const pureDateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr.trim());
+      if (pureDateMatch) {
+        const year = parseInt(pureDateMatch[1], 10);
+        const month = parseInt(pureDateMatch[2], 10) - 1;
+        const day = parseInt(pureDateMatch[3], 10);
+        const d = new Date(Date.UTC(year, month, day, 12, 30));
         if (!isNaN(d.getTime())) {
-          return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          return d.toLocaleDateString('en-US', { timeZone: IST_TIMEZONE, month: 'short', day: 'numeric', year: 'numeric' });
         }
       }
+
+      // Check for DD/MM/YYYY or DD-MM-YYYY (with optional time)
+      const dmyMatch = /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?$/i.exec(dateStr.trim());
+      if (dmyMatch) {
+        const day = parseInt(dmyMatch[1], 10);
+        const month = parseInt(dmyMatch[2], 10) - 1;
+        const year = parseInt(dmyMatch[3], 10);
+        let hour = dmyMatch[4] ? parseInt(dmyMatch[4], 10) : 12;
+        const minute = dmyMatch[5] ? parseInt(dmyMatch[5], 10) : 0;
+        const ampm = dmyMatch[6]?.toLowerCase();
+        if (ampm === 'pm' && hour < 12) hour += 12;
+        if (ampm === 'am' && hour === 12) hour = 0;
+        const d = new Date(Date.UTC(year, month, day, hour, minute));
+        if (!isNaN(d.getTime())) {
+          if (dmyMatch[4]) {
+            return d.toLocaleString('en-US', {
+              timeZone: IST_TIMEZONE,
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true,
+            });
+          }
+          return d.toLocaleDateString('en-US', { timeZone: IST_TIMEZONE, month: 'short', day: 'numeric', year: 'numeric' });
+        }
+      }
+
       const d = new Date(dateStr);
       if (!isNaN(d.getTime())) {
-        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const hasTime = /[T:]|\b(?:am|pm)\b/i.test(dateStr);
+        if (hasTime) {
+          return d.toLocaleString('en-US', {
+            timeZone: IST_TIMEZONE,
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+          });
+        }
+        return d.toLocaleDateString('en-US', { timeZone: IST_TIMEZONE, month: 'short', day: 'numeric', year: 'numeric' });
       }
     } catch {
       // fallback
@@ -238,6 +299,13 @@ export const AIAssistantPage: React.FC = () => {
     if (rawPreview) {
       const draft = rawPreview.draft || rawPreview;
       const rawParams = rawPreview.parameters || draft.parameters || m.parameters || {};
+      const resolvedStart =
+        draft.start_date ||
+        rawPreview.startDate ||
+        rawPreview.start_date ||
+        rawParams.start_date ||
+        rawParams.start ||
+        undefined;
       const resolvedDue =
         draft.due_date ||
         rawPreview.dueDate ||
@@ -259,6 +327,7 @@ export const AIAssistantPage: React.FC = () => {
         listName: draft.list_name || rawPreview.listName || 'To Do',
         listId: draft.list_id || rawPreview.listId,
         priority: draft.priority || rawPreview.priority || 'MEDIUM',
+        startDate: resolvedStart,
         dueDate: resolvedDue,
         parameters: rawPreview.parameters || draft.parameters || {},
         status: (rawPreview.status || 'PENDING') as any,
@@ -270,17 +339,17 @@ export const AIAssistantPage: React.FC = () => {
       };
     }
 
-    // Resolve clean local timestamp in user's local timezone
+    // Resolve clean local timestamp in IST timezone
     let resolvedTime = '';
     const utcDate = parseAsUtcDate(m.created_at);
     if (utcDate) {
-      resolvedTime = utcDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      resolvedTime = formatISTTime(utcDate);
     } else if (m.timestamp && /^\d{4}-\d{2}-\d{2}T/.test(m.timestamp)) {
       const d = parseAsUtcDate(m.timestamp);
-      if (d) resolvedTime = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (d) resolvedTime = formatISTTime(d);
     }
     if (!resolvedTime) {
-      resolvedTime = m.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      resolvedTime = m.timestamp || formatISTTime(new Date());
     }
 
     return {
@@ -311,6 +380,11 @@ export const AIAssistantPage: React.FC = () => {
       if (data && data.messages && data.messages.length > 0) {
         const mapped = data.messages.map(mapBackendMessage);
         setMessages(mapped);
+
+        // Instant anchor to last prompt response on load
+        setTimeout(() => {
+          scrollToBottom(true);
+        }, 0);
 
         const pendingMsg = [...mapped].reverse().find(
           (msg) => msg.approvalPreview && msg.approvalPreview.status === 'PENDING'
@@ -359,7 +433,13 @@ export const AIAssistantPage: React.FC = () => {
   }, [isAuthenticated, activeBoardId]);
 
   useEffect(() => {
-    scrollToBottom();
+    if (isUserSendingRef.current) {
+      scrollToBottom(false);
+      isUserSendingRef.current = false;
+    } else {
+      // Instantly position at last prompt response without animating from top to bottom
+      scrollToBottom(true);
+    }
   }, [messages, isLoading]);
 
   const handleSendMessage = async (e?: React.FormEvent, directText?: string) => {
@@ -372,6 +452,7 @@ export const AIAssistantPage: React.FC = () => {
       return;
     }
 
+    isUserSendingRef.current = true;
     setInputValue('');
 
     const effectiveSessionId = currentSessionId || createNewSessionId();
@@ -384,7 +465,7 @@ export const AIAssistantPage: React.FC = () => {
       conversation_id: effectiveSessionId,
       sender: 'user',
       content: query,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: formatISTTime(new Date()),
     };
 
     setMessages((prev) => [...prev, newUserMsg]);
@@ -466,6 +547,12 @@ export const AIAssistantPage: React.FC = () => {
         setActiveActionId(resolvedActionId);
 
         const rawParams = p.parameters || draft.parameters || res.parameters || {};
+        const resolvedStart =
+          draft.start_date ||
+          (p.parameters?.start_date as string) ||
+          (rawParams.start_date as string) ||
+          (rawParams.start as string) ||
+          undefined;
         const resolvedDue =
           draft.due_date ||
           (p.parameters?.due_date as string) ||
@@ -486,6 +573,7 @@ export const AIAssistantPage: React.FC = () => {
           listName: draft.list_name || (p.parameters?.list_name || p.parameters?.target_status || 'To Do') as string,
           listId: draft.list_id || undefined,
           priority: draft.priority || (p.parameters?.priority as string) || 'MEDIUM',
+          startDate: resolvedStart,
           dueDate: resolvedDue,
           parameters: draft.parameters || p.parameters || {},
           status: (p.status || 'PENDING') as any,
@@ -500,7 +588,7 @@ export const AIAssistantPage: React.FC = () => {
         model_id: res.model_id || selectedModel,
         sender: 'assistant',
         content,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: formatISTTime(new Date()),
         intent: res.intent,
         parameters: res.parameters,
         isLiveApiResult: true,
@@ -536,7 +624,7 @@ export const AIAssistantPage: React.FC = () => {
         content: isAuthError
           ? 'Authentication required or token expired. Please login to authenticate AI requests.'
           : `API Error: ${errorDetail}`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: formatISTTime(new Date()),
       };
       setMessages((prev) => [...prev, errorMsg]);
       if (isAuthError) {
@@ -624,6 +712,7 @@ export const AIAssistantPage: React.FC = () => {
       description: preview.description || '',
       listName: preview.listName || 'To Do',
       priority: preview.priority || 'MEDIUM',
+      startDate: preview.startDate || '',
       dueDate: preview.dueDate || '',
     });
   };
@@ -636,6 +725,7 @@ export const AIAssistantPage: React.FC = () => {
         description: editFormData.description,
         list_name: editFormData.listName,
         priority: editFormData.priority,
+        start_date: editFormData.startDate || undefined,
         due_date: editFormData.dueDate || undefined,
       };
       const updated = await editApproval(actionId, payload);
@@ -650,6 +740,7 @@ export const AIAssistantPage: React.FC = () => {
                 description: updated.draft?.description || editFormData.description,
                 listName: updated.draft?.list_name || editFormData.listName,
                 priority: updated.draft?.priority || editFormData.priority,
+                startDate: updated.draft?.start_date || editFormData.startDate,
                 dueDate: updated.draft?.due_date || editFormData.dueDate,
                 parameters: updated.draft?.parameters || m.approvalPreview.parameters,
               },
@@ -699,6 +790,36 @@ export const AIAssistantPage: React.FC = () => {
     }
   };
 
+  const handleStartRename = (e: React.MouseEvent, sess: ChatSession) => {
+    e.stopPropagation();
+    setEditingSessionId(sess.id);
+    setSessionRenameValue(sess.title);
+  };
+
+  const handleSaveRename = async (e: React.FormEvent | React.MouseEvent, sessionId: string) => {
+    e.stopPropagation();
+    if (!sessionRenameValue.trim()) {
+      setEditingSessionId(null);
+      return;
+    }
+    try {
+      await renameChatSession(sessionId, sessionRenameValue.trim());
+      setSessions((prev) =>
+        prev.map((s) => (s.id === sessionId ? { ...s, title: sessionRenameValue.trim() } : s))
+      );
+    } catch (err) {
+      console.error('Failed to rename session:', err);
+    } finally {
+      setEditingSessionId(null);
+    }
+  };
+
+  const handleAcceptRecommendation = async (emp: any, taskName?: string) => {
+    const targetCard = taskName || 'this task';
+    const assignPrompt = `assign member ${emp.employee_name} to ${targetCard}`;
+    handleSendMessage(undefined, assignPrompt);
+  };
+
   const handleClearAllHistory = async () => {
     if (!window.confirm('Clear all conversation history? This cannot be undone.')) return;
     try {
@@ -714,9 +835,10 @@ export const AIAssistantPage: React.FC = () => {
 
   const samplePrompts = [
     { label: 'Create Task Card', icon: '✦', prompt: 'Create a task card Login API' },
+    { label: 'Recommend Employee', icon: '👤', prompt: 'Who should I assign this task to?' },
+    { label: 'Check Availability', icon: '⚡', prompt: 'Which employee is currently free?' },
     { label: 'Set High Priority', icon: '⚡', prompt: 'Create a high-priority task for JWT authentication' },
     { label: 'Update Due Date', icon: '📅', prompt: 'add due date on the JWT authentication card date is 26 november 2026' },
-    { label: 'Assign Member', icon: '👤', prompt: 'assign member sourabh mishra to JWT authentication card' },
     { label: 'Move to Doing', icon: '➔', prompt: 'Move Login API card to Doing' },
     { label: 'Show To Do Tasks', icon: '📋', prompt: 'Show cards in the To Do list' },
   ];
@@ -766,14 +888,16 @@ export const AIAssistantPage: React.FC = () => {
         ) : (
           sessions.map((sess) => {
             const isActive = sess.id === currentSessionId;
+            const isEditing = editingSessionId === sess.id;
             return (
               <div
                 key={sess.id}
                 onClick={() => {
+                  if (isEditing) return;
                   handleSelectSession(sess);
                   if (isMobile) setIsSidebarOpen(false);
                 }}
-                className={`group relative flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all text-xs ${
+                className={`group relative flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all text-xs ${
                   isActive
                     ? 'bg-brand-50 dark:bg-brand-500/15 text-brand-700 dark:text-brand-300 font-semibold border border-brand-200 dark:border-brand-500/40 shadow-xs'
                     : 'hover:bg-slate-100 dark:hover:bg-slate-800/60 text-slate-700 dark:text-slate-300 border border-transparent'
@@ -782,33 +906,74 @@ export const AIAssistantPage: React.FC = () => {
                 {isActive && (
                   <div className="absolute left-0 top-2 bottom-2 w-1 bg-brand-500 rounded-r-full"></div>
                 )}
-                <div className="flex items-center space-x-2.5 min-w-0 pr-6 pl-1">
+                <div className="flex items-center space-x-2.5 min-w-0 pr-2 pl-1 flex-1">
                   <MessageSquare
                     className={`w-3.5 h-3.5 shrink-0 ${
                       isActive ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400'
                     }`}
                   />
-                  <div className="min-w-0">
-                    <span className="block truncate text-xs font-medium" title={sess.title}>
-                      {sess.title || 'Conversation'}
-                    </span>
-                    <span className="block text-[10px] text-slate-400 font-mono mt-0.5">
-                      {formatSessionTime(sess.updated_at || sess.created_at)}
-                    </span>
+                  <div className="min-w-0 flex-1">
+                    {isEditing ? (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          handleSaveRename(e, sess.id);
+                        }}
+                        className="flex items-center space-x-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="text"
+                          value={sessionRenameValue}
+                          onChange={(e) => setSessionRenameValue(e.target.value)}
+                          className="w-full px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-brand-500 text-xs text-slate-900 dark:text-slate-100 focus:outline-none"
+                          autoFocus
+                          onBlur={(e) => handleSaveRename(e, sess.id)}
+                        />
+                        <button
+                          type="submit"
+                          className="p-1 text-emerald-500 hover:text-emerald-400"
+                          title="Save"
+                        >
+                          <Check className="w-3 h-3" />
+                        </button>
+                      </form>
+                    ) : (
+                      <>
+                        <span className="block truncate text-xs font-medium" title={sess.title}>
+                          {sess.title || 'Conversation'}
+                        </span>
+                        <span className="block text-[10px] text-slate-400 font-mono mt-0.5">
+                          {formatSessionTime(sess.updated_at || sess.created_at)}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteSession(e, sess.id);
-                  }}
-                  title="Delete Mission"
-                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                {!isEditing && (
+                  <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => handleStartRename(e, sess)}
+                      title="Rename Chat"
+                      className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteSession(e, sess.id);
+                      }}
+                      title="Delete Chat"
+                      className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })
@@ -987,51 +1152,43 @@ export const AIAssistantPage: React.FC = () => {
           </div>
 
           {/* Interactive Messages Stream */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-5 md:p-6 space-y-4 sm:space-y-6">
+          <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-3 sm:p-5 md:p-6 space-y-4 sm:space-y-6">
             {messages.map((msg) => (
               <div key={msg.id} className="w-full">
                 {msg.sender === 'user' ? (
-                  /* Operator (User) Command Card */
-                  <div className="flex justify-end">
-                    <div className="max-w-2xl w-full bg-slate-900/90 dark:bg-[#0a0f18] border border-emerald-500/30 rounded-2xl p-3.5 sm:p-4 shadow-md space-y-2">
-                      <div className="flex items-center justify-between text-[10px] pb-2 border-b border-slate-800/80">
-                        <div className="flex items-center space-x-1.5 text-emerald-400 font-mono">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                          <span className="uppercase tracking-wider font-semibold">Operator Command</span>
-                        </div>
-                        <span className="text-slate-400 font-mono flex items-center space-x-1">
-                          <Clock className="w-3 h-3 text-slate-500" />
-                          <span>{msg.timestamp}</span>
-                        </span>
+                  /* User Message Bubble - ChatGPT Professional Style */
+                  <div className="flex justify-end items-end space-x-2.5">
+                    <div className="max-w-[85%] sm:max-w-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 dark:from-emerald-700 dark:via-teal-700 dark:to-emerald-800 text-white rounded-2xl rounded-br-xs px-4 py-3 shadow-sm space-y-1">
+                      <p className="text-xs font-medium leading-relaxed font-sans whitespace-pre-wrap">
+                        {msg.content}
+                      </p>
+                      <div className="flex justify-end items-center space-x-1 text-[9.5px] text-emerald-100/70 font-mono">
+                        <Clock className="w-2.5 h-2.5" />
+                        <span>{msg.timestamp}</span>
                       </div>
-                      <div className="flex items-start space-x-2 pt-1">
-                        <span className="text-emerald-400 font-mono font-bold text-sm leading-none mt-0.5 select-none">
-                          &gt;
-                        </span>
-                        <p className="text-xs font-medium text-slate-100 leading-relaxed font-sans">
-                          {msg.content}
-                        </p>
-                      </div>
+                    </div>
+                    <div
+                      className="w-7 h-7 rounded-full bg-slate-800 text-slate-100 border border-slate-700 flex items-center justify-center text-[10.5px] font-bold shrink-0 shadow-sm"
+                      title={user?.full_name || 'You'}
+                    >
+                      {user?.full_name ? user.full_name[0].toUpperCase() : 'U'}
                     </div>
                   </div>
                 ) : (
-                  /* Agent Mission Execution Card */
-                  <div className="flex justify-start">
-                    <div className="max-w-3xl w-full bg-white/90 dark:bg-[#0d1424]/90 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-3.5 sm:p-5 shadow-md space-y-3 sm:space-y-4">
-                      {/* Agent Header */}
-                      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3">
-                        <div className="flex items-center space-x-2.5">
-                          <div className="w-7 h-7 rounded-xl bg-brand-500/10 border border-brand-500/25 flex items-center justify-center text-brand-600 dark:text-brand-400 shrink-0">
-                            <Bot className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <span className="text-xs font-bold text-slate-900 dark:text-slate-100 tracking-wide block">
-                              Agentic Orchestrator Node
-                            </span>
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              Intent Pipeline & Trello MCP Integration
-                            </span>
-                          </div>
+                  /* Assistant Message - ChatGPT Professional Style */
+                  <div className="flex items-start space-x-3 w-full max-w-4xl">
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
+                      <Bot className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 space-y-3 bg-white dark:bg-[#0d1424] border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-4 sm:p-5 shadow-xs">
+                      {/* Assistant Header */}
+                      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                            Agentic Assistant
+                          </span>
+                          <span className="text-slate-400 text-[10px]">•</span>
+                          <span className="text-slate-400 font-mono text-[10px]">{msg.timestamp}</span>
                         </div>
                         <div className="flex items-center space-x-2">
                           {msg.model_id && (
@@ -1043,17 +1200,11 @@ export const AIAssistantPage: React.FC = () => {
                               {AVAILABLE_MODELS.find((m) => m.id === msg.model_id)?.name || msg.model_id}
                             </span>
                           )}
-                          <span className="text-[10px] text-slate-400 font-mono flex items-center space-x-1">
-                            <Clock className="w-3 h-3 text-slate-500" />
-                            <span>{msg.timestamp}</span>
-                          </span>
                         </div>
                       </div>
 
-                      {/* Main Message Content */}
-                      <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap font-sans">
-                        {msg.content}
-                      </p>
+                      {/* Main Message Content with Markdown & Code Blocks */}
+                      <MarkdownRenderer content={msg.content} />
 
                       {/* Tool Selection Badge */}
                       {msg.discoveredTool && (
@@ -1141,7 +1292,7 @@ export const AIAssistantPage: React.FC = () => {
                                     {card.due && (
                                       <span className="text-[10px] font-mono text-slate-400 flex items-center space-x-1">
                                         <Calendar className="w-2.5 h-2.5" />
-                                        <span>{new Date(card.due).toLocaleDateString()}</span>
+                                        <span>{formatISTDateTime(card.due)}</span>
                                       </span>
                                     )}
                                     {card.url && (
@@ -1191,6 +1342,25 @@ export const AIAssistantPage: React.FC = () => {
                             ))}
                           </div>
                         </div>
+                      )}
+
+                      {/* Read Operation Results: Intelligent Employee Recommendation */}
+                      {msg.executionResult && (msg.executionResult.recommended_employee || msg.executionResult.has_sufficient_capacity_overall === false) && (
+                        <EmployeeRecommendationPreview
+                          data={msg.executionResult as any}
+                          onAcceptRecommendation={(emp) => handleAcceptRecommendation(emp, msg.executionResult?.task_name)}
+                          onSelectAlternative={(emp) => handleAcceptRecommendation(emp, msg.executionResult?.task_name)}
+                          onCancel={() => {
+                            setMessages((prev) =>
+                              prev.map((m) =>
+                                m.id === msg.id
+                                  ? { ...m, executionResult: { ...m.executionResult, dismissed: true } }
+                                  : m
+                              )
+                            );
+                          }}
+                          isAssigning={isAssigningRecommendation}
+                        />
                       )}
 
                       {/* Human-in-the-Loop Task Preview Card (The Hero Component) */}
@@ -1321,7 +1491,7 @@ export const AIAssistantPage: React.FC = () => {
                                       className="w-full mt-0.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100"
                                     />
                                   </div>
-                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                                     <div>
                                       <label className="text-[10px] font-medium text-slate-500 uppercase">List</label>
                                       <select
@@ -1348,6 +1518,16 @@ export const AIAssistantPage: React.FC = () => {
                                         <option value="HIGH">High</option>
                                         <option value="URGENT">Urgent</option>
                                       </select>
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] font-medium text-slate-500 uppercase">Start Date</label>
+                                      <input
+                                        type="text"
+                                        placeholder="e.g. 2026-11-20"
+                                        value={editFormData.startDate}
+                                        onChange={(e) => setEditFormData({ ...editFormData, startDate: e.target.value })}
+                                        className="w-full mt-0.5 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100"
+                                      />
                                     </div>
                                     <div>
                                       <label className="text-[10px] font-medium text-slate-500 uppercase">Due Date</label>
@@ -1478,8 +1658,8 @@ export const AIAssistantPage: React.FC = () => {
                                   </div>
                                 </div>
 
-                                {/* Metadata HUD Grid: Board, List, Priority, Due Date */}
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                {/* Metadata HUD Grid: Board, List, Priority, Start Date (if set), Due Date */}
+                                <div className={`grid grid-cols-2 ${msg.approvalPreview.startDate ? 'sm:grid-cols-5' : 'sm:grid-cols-4'} gap-2 text-xs`}>
                                   <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
                                     <span className="text-[10px] text-slate-400 block uppercase font-medium flex items-center space-x-1 font-mono">
                                       <Layers className="w-3 h-3 text-slate-400" />
@@ -1516,6 +1696,18 @@ export const AIAssistantPage: React.FC = () => {
                                       {msg.approvalPreview.priority || 'MEDIUM'}
                                     </span>
                                   </div>
+
+                                  {msg.approvalPreview.startDate && (
+                                    <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
+                                      <span className="text-[10px] text-slate-400 block uppercase font-medium flex items-center space-x-1 font-mono">
+                                        <Calendar className="w-3 h-3 text-cyan-500" />
+                                        <span>Start Date</span>
+                                      </span>
+                                      <span className="font-semibold text-cyan-700 dark:text-cyan-400 truncate block mt-0.5">
+                                        {formatDueDateDisplay(msg.approvalPreview.startDate)}
+                                      </span>
+                                    </div>
+                                  )}
 
                                   <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800">
                                     <span className="text-[10px] text-slate-400 block uppercase font-medium flex items-center space-x-1 font-mono">
@@ -1702,18 +1894,14 @@ export const AIAssistantPage: React.FC = () => {
               ))}
             </div>
 
-            {/* Floating Command Bar */}
-            <form onSubmit={handleSendMessage} className="relative">
-              <div className="relative flex items-center bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80 rounded-2xl pl-3 sm:pl-4 pr-2 sm:pr-3 py-1.5 sm:py-2 shadow-inner focus-within:border-emerald-500/60 focus-within:ring-2 focus-within:ring-emerald-500/20 transition-all">
-                <div className="shrink-0 mr-2 sm:mr-3 text-emerald-500">
-                  <Terminal className="w-4 h-4" />
-                </div>
-
+            {/* Floating Command Bar - ChatGPT Professional Style */}
+            <form onSubmit={handleSendMessage} className="relative max-w-4xl mx-auto w-full">
+              <div className="relative flex items-center bg-slate-100 dark:bg-slate-900 border border-slate-300/80 dark:border-slate-700/80 rounded-2xl pl-3.5 sm:pl-4 pr-2 sm:pr-2.5 py-1.5 sm:py-2 shadow-sm focus-within:border-emerald-500/60 focus-within:ring-2 focus-within:ring-emerald-500/20 transition-all">
                 <input
                   type="text"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  placeholder='Enter agent command (e.g. "Create task Login API", "Move to Doing")...'
+                  placeholder='Message Agentic Assistant (e.g. "Create task Login API", "Move card to Done")...'
                   className="w-full bg-transparent border-none text-xs text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-0 py-1 sm:py-1.5 min-w-0"
                 />
 
@@ -1726,8 +1914,8 @@ export const AIAssistantPage: React.FC = () => {
                   <button
                     type="submit"
                     disabled={!inputValue.trim() || isLoading}
-                    className="p-2 sm:p-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 text-white transition shadow-sm shrink-0"
-                    title="Execute Command"
+                    className="p-2 sm:p-2.5 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-30 disabled:hover:from-emerald-600 text-white transition shadow-sm shrink-0"
+                    title="Send Message"
                   >
                     <Send className="w-3.5 h-3.5" />
                   </button>

@@ -29,6 +29,7 @@ import { EmptyState } from '../components/common/EmptyState';
 import { useAuth } from '../context/AuthContext';
 import { fetchLiveActivities } from '../services/api';
 import { exportToExcel } from '../utils/excelExport';
+import { formatISTDateTime } from '../utils/dateUtils';
 
 export const ActivityHistoryPage: React.FC = () => {
   const { isAuthenticated } = useAuth();
@@ -153,7 +154,7 @@ export const ActivityHistoryPage: React.FC = () => {
       act.user_name ? `${act.user_name} (${act.user_email || ''})` : (act.user_email || 'System'),
       (act.status || 'EXECUTED').toUpperCase(),
       act.tool_name || 'Platform Tool',
-      act.created_at ? new Date(act.created_at).toLocaleString() : '—',
+      act.created_at ? formatISTDateTime(act.created_at) : '—',
       act.board_name || 'Primary Board',
       act.card_url || '—',
     ]);
@@ -423,7 +424,7 @@ export const ActivityHistoryPage: React.FC = () => {
 
                       <div className="flex items-center space-x-2 text-[11px] text-slate-400 font-mono">
                         <Clock className="w-3 h-3 text-slate-400" />
-                        <span>{new Date(act.created_at).toLocaleString()}</span>
+                        <span>{formatISTDateTime(act.created_at)}</span>
                       </div>
                     </div>
 

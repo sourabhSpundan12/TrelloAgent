@@ -265,6 +265,30 @@ DEFAULT_ENTERPRISE_TOOLS: List[Dict[str, Any]] = [
         "enabled": True,
         "approval_required": False,
     },
+    {
+        "tool_id": "employee_recommend_assignment",
+        "name": "Recommend Employee for Task",
+        "description": "Analyzes real-time employee workload, capacity, historical on-time performance, and similar task experience to recommend the most suitable employee for a task assignment.",
+        "category": "employee_management",
+        "keywords": ["recommend", "who", "assign", "free", "available", "capacity", "handle", "suitability", "workload", "kis", "dena", "kaun"],
+        "synonyms": ["who should i assign", "which employee is free", "recommend employee", "who can handle this task", "who should do this task", "kis employee ko task du", "mujhe ye task kis employee ko dena chahiye"],
+        "capabilities": ["recommend_employee", "task_assignment_advisory", "workload_capacity_matching"],
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_name": {"type": "string", "description": "Title or name of the task to assign."},
+                "task_requirements": {"type": "string", "description": "Description, skills or complexity of the task."},
+                "due_date": {"type": "string", "description": "Proposed deadline for the task."},
+                "target_employee": {"type": "string", "description": "Optional specific employee queried by manager, e.g. 'Rahul'."},
+            },
+        },
+        "permissions": ["EMPLOYEE", "MANAGER", "ADMIN", "HR"],
+        "executor_type": "employee_management",
+        "executor_key": "employee_recommend_assignment",
+        "version": "1.0.0",
+        "enabled": True,
+        "approval_required": False,
+    },
 ]
 
 

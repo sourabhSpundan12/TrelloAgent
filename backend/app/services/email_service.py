@@ -3,6 +3,7 @@ import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 from pathlib import Path
 from typing import Any, Dict
 
@@ -140,3 +141,69 @@ class EmailService:
 </body>
 </html>"""
         await self.send_email(to_email, subject, html_content, text_content)
+
+    def _send_with_attachment_sync(
+        self,
+        to_email: str,
+        subject: str,
+        html_content: str,
+        text_content: str,
+        attachment_bytes: bytes,
+        attachment_filename: str,
+    ) -> None:
+        cfg = self._get_config()
+        if not cfg["user"] or not cfg["password"]:
+            logger.warning(
+                f"[SMTP NOT CONFIGURED] Email to '{to_email}' skipped because SMTP_USER/SMTP_PASSWORD are not set."
+            )
+            raise ValueError(
+                "SMTP credentials are not configured. Please set SMTP_USER and SMTP_PASSWORD in agentic-task-manager/.env"
+            )
+
+        msg = MIMEMultipart("mixed")
+        msg["Subject"] = subject
+        msg["From"] = f"{cfg['from_name']} <{cfg['from_email']}>"
+        msg["To"] = to_email
+
+        alt_part = MIMEMultipart("alternative")
+        alt_part.attach(MIMEText(text_content, "plain", "utf-8"))
+        alt_part.attach(MIMEText(html_content, "html", "utf-8"))
+        msg.attach(alt_part)
+
+        pdf_part = MIMEApplication(attachment_bytes, _subtype="pdf")
+        pdf_part.add_header("Content-Disposition", "attachment", filename=attachment_filename)
+        msg.attach(pdf_part)
+
+        if cfg["use_ssl"] or cfg["port"] == 465:
+            with smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=20) as server:
+                server.login(cfg["user"], cfg["password"])
+                server.sendmail(cfg["from_email"], [to_email], msg.as_string())
+        else:
+            with smtplib.SMTP(cfg["host"], cfg["port"], timeout=20) as server:
+                server.ehlo()
+                if cfg["use_tls"]:
+                    server.starttls()
+                    server.ehlo()
+                server.login(cfg["user"], cfg["password"])
+                server.sendmail(cfg["from_email"], [to_email], msg.as_string())
+
+        logger.info(f"Successfully delivered PDF report email via SMTP to {to_email}")
+
+    async def send_report_pdf_email(
+        self,
+        to_email: str,
+        subject: str,
+        html_content: str,
+        text_content: str,
+        pdf_bytes: bytes,
+        filename: str,
+    ) -> None:
+        await asyncio.to_thread(
+            self._send_with_attachment_sync,
+            to_email,
+            subject,
+            html_content,
+            text_content,
+            pdf_bytes,
+            filename,
+        )

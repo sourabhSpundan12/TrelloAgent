@@ -22,6 +22,7 @@ class TaskDraft(BaseModel):
     list_name: str = Field(default="To Do", description="Target list or column name")
     list_id: Optional[str] = Field(None, description="Target list ID")
     priority: str = Field(default="MEDIUM", description="Priority level: LOW, MEDIUM, HIGH, URGENT")
+    start_date: Optional[str] = Field(None, description="Optional start date in ISO format or string")
     due_date: Optional[str] = Field(None, description="Optional due date in ISO format or string")
     parameters: Dict[str, Any] = Field(default_factory=dict, description="Exact parameters to pass to executor")
 

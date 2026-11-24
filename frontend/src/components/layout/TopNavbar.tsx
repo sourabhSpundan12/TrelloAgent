@@ -111,7 +111,7 @@ export const TopNavbar: React.FC<TopNavbarProps> = ({ currentTab, onTabChange, o
       const diffDays = Math.floor(diffHours / 24);
       if (diffDays === 1) return 'Yesterday';
       if (diffDays < 7) return `${diffDays}d ago`;
-      return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      return d.toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata' });
     } catch {
       return '';
     }

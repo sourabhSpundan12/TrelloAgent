@@ -22,8 +22,10 @@ import {
   User,
   Download,
   FileSpreadsheet,
+  Shield,
 } from 'lucide-react';
 import { exportToExcel } from '../utils/excelExport';
+import { formatISTDate, formatISTDateTime, IST_TIMEZONE } from '../utils/dateUtils';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
@@ -149,7 +151,7 @@ export const EmployeesPage: React.FC = () => {
   const [fromDateFilter, setFromDateFilter] = useState<string>('');
   const [toDateFilter, setToDateFilter] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [departmentFilter, setDepartmentFilter] = useState('ALL');
+  const [roleFilter, setRoleFilter] = useState<'ALL' | 'ADMIN' | 'MEMBER'>('ALL');
 
   // Modals state
   const [showUnassignedModal, setShowUnassignedModal] = useState(false);
@@ -498,11 +500,16 @@ export const EmployeesPage: React.FC = () => {
     }
   };
 
-  const departments = useMemo(() => {
-    return Array.from(new Set(employees.map((e) => e.department).filter(Boolean)));
+  // Role counts calculation
+  const adminCount = useMemo(() => {
+    return employees.filter((e) => (e.role || '').toUpperCase() === 'ADMIN').length;
   }, [employees]);
 
-  // Live Employee Search Filter (Requirement 1)
+  const memberCount = useMemo(() => {
+    return employees.filter((e) => (e.role || '').toUpperCase() === 'MEMBER').length;
+  }, [employees]);
+
+  // Live Employee Search & Role Filter
   const filteredEmployees = useMemo(() => {
     return employees.filter((emp) => {
       const q = searchQuery.toLowerCase().trim();
@@ -514,10 +521,11 @@ export const EmployeesPage: React.FC = () => {
         (emp.username && emp.username.toLowerCase().includes(q)) ||
         (emp.email && emp.email.toLowerCase().includes(q));
 
-      const matchesDept = departmentFilter === 'ALL' || emp.department === departmentFilter;
-      return matchesSearch && matchesDept;
+      const empRole = (emp.role || '').toUpperCase() === 'ADMIN' ? 'ADMIN' : 'MEMBER';
+      const matchesRole = roleFilter === 'ALL' || empRole === roleFilter;
+      return matchesSearch && matchesRole;
     });
-  }, [employees, searchQuery, departmentFilter]);
+  }, [employees, searchQuery, roleFilter]);
 
   const formatDueDate = (rawDue?: string | null) => {
     if (!rawDue) return null;
@@ -525,6 +533,7 @@ export const EmployeesPage: React.FC = () => {
       const d = new Date(rawDue);
       if (isNaN(d.getTime())) return null;
       return d.toLocaleDateString('en-US', {
+        timeZone: IST_TIMEZONE,
         month: 'short',
         day: 'numeric',
         year: 'numeric',
@@ -561,8 +570,8 @@ export const EmployeesPage: React.FC = () => {
       task.task_title || 'Untitled Task',
       task.trello_card_url || '—',
       task.board_name || activeBoard?.name || 'Primary Trello Board',
-      task.assigned_at ? new Date(task.assigned_at).toLocaleString() : '—',
-      task.due_date ? new Date(task.due_date).toLocaleString() : '—',
+      task.assigned_at ? formatISTDateTime(task.assigned_at) : '—',
+      task.due_date ? formatISTDateTime(task.due_date) : '—',
       formatTimeRemaining(task.time_remaining_minutes, task.is_overdue, task.status) || '—',
       (task.status || 'ASSIGNED').toUpperCase(),
       task.estimated_duration_minutes !== undefined && task.estimated_duration_minutes !== null
@@ -685,25 +694,33 @@ export const EmployeesPage: React.FC = () => {
             </div>
 
             <div className="flex items-center space-x-2">
-              <select
-                value={departmentFilter}
-                onChange={(e) => setDepartmentFilter(e.target.value)}
-                className="bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-brand-500 transition"
-              >
-                <option value="ALL">All Departments ({employees.length})</option>
-                {departments.map((dept) => (
-                  <option key={dept} value={dept}>
-                    {dept}
+              {/* Role Filter Dropdown: ALL, ADMIN, MEMBER */}
+              <div className="flex items-center space-x-1.5 bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 rounded-xl px-2.5 py-1.5">
+                <Filter className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Role:</span>
+                <select
+                  value={roleFilter}
+                  onChange={(e) => setRoleFilter(e.target.value as any)}
+                  className="bg-transparent text-xs text-slate-800 dark:text-slate-100 font-semibold focus:outline-none cursor-pointer pr-1"
+                >
+                  <option value="ALL" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">
+                    All Roles ({employees.length})
                   </option>
-                ))}
-              </select>
+                  <option value="ADMIN" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">
+                    Admin ({adminCount})
+                  </option>
+                  <option value="MEMBER" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">
+                    Member ({memberCount})
+                  </option>
+                </select>
+              </div>
 
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
                   setSearchQuery('');
-                  setDepartmentFilter('ALL');
+                  setRoleFilter('ALL');
                 }}
               >
                 Reset
@@ -724,7 +741,7 @@ export const EmployeesPage: React.FC = () => {
               actionLabel="Clear Filters"
               onAction={() => {
                 setSearchQuery('');
-                setDepartmentFilter('ALL');
+                setRoleFilter('ALL');
               }}
             />
           ) : (
@@ -742,9 +759,20 @@ export const EmployeesPage: React.FC = () => {
                       <MemberAvatar name={emp.name} avatarUrl={emp.avatar} size="md" />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400 font-semibold truncate">
-                            {emp.empId}
-                          </span>
+                          <div className="flex items-center space-x-1.5 truncate">
+                            <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400 font-semibold truncate">
+                              {emp.empId}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border ${
+                                (emp.role || '').toUpperCase() === 'ADMIN'
+                                  ? 'bg-purple-500/15 text-purple-400 border-purple-500/30'
+                                  : 'bg-sky-500/15 text-sky-400 border-sky-500/30'
+                              }`}
+                            >
+                              {(emp.role || '').toUpperCase() === 'ADMIN' ? 'Admin' : 'Member'}
+                            </span>
+                          </div>
                           <Badge variant={emp.status === 'ACTIVE' ? 'success' : 'neutral'} className="shrink-0 text-[10px]">
                             {emp.status || 'ACTIVE'}
                           </Badge>
@@ -850,6 +878,15 @@ export const EmployeesPage: React.FC = () => {
                     <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
                       {selectedEmployee.name}
                     </h3>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${
+                        (selectedEmployee.role || '').toUpperCase() === 'ADMIN'
+                          ? 'bg-purple-500/15 text-purple-400 border-purple-500/30'
+                          : 'bg-sky-500/15 text-sky-400 border-sky-500/30'
+                      }`}
+                    >
+                      {(selectedEmployee.role || '').toUpperCase() === 'ADMIN' ? 'Admin' : 'Member'}
+                    </span>
                     <Badge variant={selectedEmployee.status === 'ACTIVE' ? 'success' : 'neutral'}>
                       {selectedEmployee.status || 'ACTIVE'}
                     </Badge>

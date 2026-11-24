@@ -52,6 +52,7 @@ async def get_all_employees_summary(
             "id": str(u["_id"]),
             "name": u_name,
             "email": u.get("email"),
+            "role": "ADMIN",
         })
 
     for tm in trello_members:
@@ -62,6 +63,7 @@ async def get_all_employees_summary(
                 "id": str(tm.get("id")),
                 "name": tm_name,
                 "email": f"{tm.get('username', 'member')}@trello.board",
+                "role": "MEMBER",
             })
 
     summaries = []
@@ -94,6 +96,7 @@ async def get_all_employees_summary(
             employee_id=emp_id,
             employee_name=emp_name,
             employee_email=emp.get("email"),
+            role=emp.get("role", "MEMBER"),
             assigned_count=assigned_c,
             in_progress_count=in_prog_c,
             completed_count=comp_c,

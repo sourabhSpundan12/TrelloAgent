@@ -179,7 +179,11 @@ class PIITerminalLogger:
             "card", "task", "list", "board", "trello", "todo", "done", "doing",
             "review", "testing", "in-review", "login", "logout", "signin", "signup",
             "api", "backend", "frontend", "auth", "thursday", "today", "tomorrow",
-            "monday", "tuesday", "wednesday", "friday", "saturday", "sunday", "starter", "guide"
+            "monday", "tuesday", "wednesday", "friday", "saturday", "sunday", "starter", "guide",
+            "naam", "name", "kaam", "banao", "bana", "karo", "kardo", "karna", "dalo", "daal",
+            "hatao", "hata", "bhej", "bhejo", "shift", "de", "do", "dena", "hai", "hain",
+            "ka", "ki", "ke", "ko", "liye", "mein", "me", "mai", "se", "par", "pe", "ek",
+            "naya", "wali", "wala", "vale", "fullstack", "full stack", "stack"
         }
         for placeholder, original_val in mapping.items():
             if original_val and len(original_val.strip()) > 1:

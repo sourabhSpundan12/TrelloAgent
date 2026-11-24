@@ -59,10 +59,11 @@ USER COMMAND:
 AVAILABLE DYNAMIC TOOLS (Discovered from Registry):
 {tools_context}
 
-CRITICAL CONVERSATION CONTEXT & PRECEDENCE RULES:
-- The CURRENT USER COMMAND ALWAYS takes absolute precedence over PREVIOUS CONVERSATION CONTEXT.
-- NEVER copy, carry over, or blend task titles ('name') or descriptions ('desc') from previous conversation history into a new task command!
-- If the current USER COMMAND defines a task (e.g. "Ask him to Checkin by 20 November"), the task title MUST be extracted from the current command ("Checkin"), NEVER from prior messages (like "client onboarding").
+CRITICAL CONVERSATION CONTEXT & MULTI-TURN RULES:
+- The CURRENT USER COMMAND ALWAYS takes primary precedence, but MUST seamlessly integrate with PREVIOUS CONVERSATION CONTEXT for follow-ups and clarifications!
+- If previous turn asked for a missing field (e.g. User: "Create a task for Rahul." -> Assistant asks: "What should the task be about?" -> User: "Full stack development."), combine the previous member ("Rahul") with the new task title ("Full stack development") to complete the creation flow without asking again!
+- Resolve references like 'it', 'that card', 'is card', or 'iss task' using the most recent card discussed in prior messages.
+- If the current USER COMMAND completely initiates an independent, distinct task with its own title and member, do not blend unrelated names from older turns.
 
 INSTRUCTIONS:
 1. Identify the user intent (e.g., create_card, move_card, update_card, delete_card, search_cards, get_workload, get_employee_tasks).
@@ -77,7 +78,7 @@ INSTRUCTIONS:
    - For task creation (e.g., 'trello_create_card'):
      * 'name': A clean, concise title/heading for the task:
        - If the user says "Create a task for <Person>. ... Ask him/her to <Action> by <Date>" (e.g. "Ask him to Checkin by 20 November"), the task title 'name' is the action requested: "Checkin" (or "Check In"), NOT the person's name, and NEVER prior topics from history!
-       - If the user says "create a task card <Title>...", the title is <Title> (e.g. "Full Stack", "Backend", "JWT Authentication").
+       - If the user says "create a task card <Title>...", or natural Hindi phrasing like "<Title> naam ka card/task banao" or "ek card banao <Title> naam ka" (e.g. "full stack naam ka card banao", "ek card banao fullStack naam ka", "card banao fullstack naam ka usme <Member> ko assign karo or uski start date 25 nov 2026 rakho or due date 27 nov 2026 at 5 pm"), the title is strictly <Title> (e.g. "Fullstack", "Backend", "JWT Authentication"). NEVER include assignee names, filler clauses ("naam ka", "usme", "assign karo", "rakho"), dates, or times in 'name'.
      * 'member_name': Name of team member or employee to assign or add to the card if mentioned in the command (e.g. "Yogesh", "Alex Rivera", "Jordan Lee").
      * 'desc': YOU MUST generate an informative, domain-relevant, and context-rich description directly related to the task heading/action (e.g. for "Backend", describe designing backend architecture, API endpoints, database interactions, schema validation, and unit test coverage; for "Frontend", describe building responsive UI components, state management, and accessibility; for "Auth", describe authentication workflows, token lifecycle, and route protection). CRITICAL: NEVER repeat or echo the user command prompt (DO NOT write things like "Create backend card with due date Thursday and assigned to..."). Formulate professional engineering and operational deliverables implied by the task title. If the user explicitly provided custom notes or specifications, incorporate them. NEVER leave 'desc' empty and NEVER pull descriptions from previous messages.
      * 'list_name': Target column name (defaults to "To Do" if unspecified).

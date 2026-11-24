@@ -133,21 +133,60 @@ async def trello_list_lists(board_id: Optional[str] = None, force_refresh: bool 
 
 
 async def trello_create_list(
-    name: str,
+    name: Optional[str] = None,
+    names: Optional[List[str]] = None,
     board_id: Optional[str] = None,
     pos: Optional[str] = "bottom",
 ) -> Dict[str, Any]:
-    """Create a new column/list on the Trello board."""
-    if not name or not name.strip():
-        return {"status": "ERROR", "error": True, "message": "List name is required."}
+    """Create one or multiple new columns/lists on the Trello board."""
+    # Resolve target list names list
+    target_names: List[str] = []
+    if names and isinstance(names, list):
+        for n in names:
+            if isinstance(n, str) and n.strip():
+                target_names.append(n.strip())
+    elif name and str(name).strip():
+        # Check if multiple names separated by commas, semicolons, or " and "
+        raw_name = str(name).strip()
+        if "," in raw_name or ";" in raw_name or " and " in raw_name.lower():
+            parts = re.split(r"[,;]|\s+and\s+", raw_name, flags=re.IGNORECASE)
+            for p in parts:
+                clean_p = p.strip().strip('"\'')
+                if clean_p and clean_p.lower() not in ("list", "lists", "column", "columns", "a", "the"):
+                    target_names.append(clean_p)
+        else:
+            target_names.append(raw_name)
+
+    if not target_names:
+        return {"status": "ERROR", "error": True, "message": "At least one valid list name is required."}
+
     invalidate_trello_cache()
     client = get_trello_client()
-    try:
-        new_list = await client.create_list(name=name.strip(), board_id=board_id, pos=pos)
-        return {"status": "SUCCESS", "action": "CREATED", "list": new_list}
-    except TrelloError as err:
-        logger.warning(f"trello_create_list failed: {err}")
-        return {"status": "ERROR", "error": True, "message": err.message, "status_code": err.status_code}
+    created_lists = []
+    errors = []
+
+    for item_name in target_names:
+        try:
+            new_l = await client.create_list(name=item_name, board_id=board_id, pos=pos)
+            created_lists.append(new_l)
+        except TrelloError as err:
+            logger.warning(f"trello_create_list failed for '{item_name}': {err}")
+            errors.append(f"{item_name}: {err.message}")
+
+    if created_lists:
+        res: Dict[str, Any] = {
+            "status": "SUCCESS",
+            "action": "CREATED",
+            "list": created_lists[0],
+            "lists": created_lists,
+            "created_count": len(created_lists),
+            "created_names": [l.get("name") for l in created_lists],
+        }
+        if errors:
+            res["warnings"] = errors
+        return res
+
+    return {"status": "ERROR", "error": True, "message": "; ".join(errors) if errors else "Failed to create list(s)."}
 
 
 async def trello_list_cards(
@@ -201,10 +240,11 @@ async def trello_create_card(
     list_id: Optional[str] = None,
     desc: Optional[str] = "",
     due_date: Optional[str] = None,
+    start_date: Optional[str] = None,
     board_id: Optional[str] = None,
     member_name: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Create a new task card on the Trello board. If list_id is omitted, places in first open list."""
+    """Create a new task card on the Trello board with optional start date and due date."""
     if not name or not name.strip():
         return {"status": "ERROR", "error": True, "message": "Card name is required."}
     invalidate_trello_cache()
@@ -215,6 +255,7 @@ async def trello_create_card(
             list_id=list_id,
             desc=desc,
             due=due_date,
+            start=start_date,
             member_name=member_name,
             board_id=board_id,
         )
@@ -229,14 +270,15 @@ async def trello_update_card(
     name: Optional[str] = None,
     desc: Optional[str] = None,
     due_date: Optional[str] = None,
+    start_date: Optional[str] = None,
     member_name: Optional[str] = None,
     board_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Update title, description, due date, and/or assign a member to an existing Trello card."""
+    """Update title, description, due date, start date, and/or assign a member to an existing Trello card."""
     if not card_id or not card_id.strip():
         return {"status": "ERROR", "error": True, "message": "card_id is required."}
-    if name is None and desc is None and due_date is None and member_name is None:
-        return {"status": "ERROR", "error": True, "message": "At least one field ('name', 'desc', 'due_date', or 'member_name') must be provided."}
+    if name is None and desc is None and due_date is None and start_date is None and member_name is None:
+        return {"status": "ERROR", "error": True, "message": "At least one field ('name', 'desc', 'due_date', 'start_date', or 'member_name') must be provided."}
     invalidate_trello_cache()
     client = get_trello_client()
     try:
@@ -245,6 +287,7 @@ async def trello_update_card(
             name=name,
             desc=desc,
             due=due_date,
+            start=start_date,
             member_name=member_name,
             board_id=board_id,
         )
@@ -322,5 +365,18 @@ async def trello_add_comment(card_id: str, text: str) -> Dict[str, Any]:
     except Exception as err:
         logger.warning(f"trello_add_comment unexpected error: {err}")
         return {"status": "ERROR", "error": True, "message": str(err)}
+
+
+async def trello_get_card_comments(card_id: str, limit: int = 50) -> Dict[str, Any]:
+    """Retrieve all comments posted on a specific Trello card."""
+    if not card_id or not card_id.strip():
+        return {"status": "ERROR", "error": True, "message": "card_id is required."}
+    client = get_trello_client()
+    try:
+        comments = await client.get_card_comments(card_id=card_id.strip(), limit=limit)
+        return {"status": "SUCCESS", "comments": comments, "total": len(comments)}
+    except Exception as err:
+        logger.warning(f"trello_get_card_comments failed: {err}")
+        return {"status": "ERROR", "error": True, "message": str(err), "comments": [], "total": 0}
 
 

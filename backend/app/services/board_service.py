@@ -107,7 +107,54 @@ async def resolve_active_board(
     def norm_str(s: str) -> str:
         return re.sub(r"[^a-z0-9]", "", s.lower())
 
-    # 1. Check if parameters specified board_name or board_id
+    # 1. Use client-provided requested_board_id FIRST (reflects the currently active board selected in UI)
+    if requested_board_id and str(requested_board_id).strip():
+        req_id = str(requested_board_id).strip()
+        for b in all_boards:
+            if b["board_id"] == req_id:
+                # Only allow command to override if user explicitly used phrases like "on board <Name>" or "in <Name> board"
+                if command:
+                    cmd_lower = command.lower()
+                    for other_b in all_boards:
+                        if other_b["board_id"] == req_id or not other_b["name"]:
+                            continue
+                        ob_name_lower = other_b["name"].lower()
+                        # Require explicit board preposition: "on board X", "in board X", "to board X", "on X board", "in X board", "switch to X"
+                        if (
+                            f"on board {ob_name_lower}" in cmd_lower
+                            or f"in board {ob_name_lower}" in cmd_lower
+                            or f"to board {ob_name_lower}" in cmd_lower
+                            or f"on {ob_name_lower} board" in cmd_lower
+                            or f"in {ob_name_lower} board" in cmd_lower
+                            or f"switch to {ob_name_lower}" in cmd_lower
+                        ):
+                            logger.info(f"Explicit board switch requested in command: '{other_b['name']}' ({other_b['board_id']})")
+                            return {"board_id": other_b["board_id"], "name": other_b["name"]}
+
+                return {"board_id": req_id, "name": b["name"] or "Active Board"}
+        return {"board_id": req_id, "name": "Active Board"}
+
+    # 2. Check if command explicitly mentions a board with preposition (e.g. "on board X", "in X board")
+    if command:
+        cmd_lower = command.lower()
+        sorted_boards = sorted(all_boards, key=lambda b: len(b["name"]), reverse=True)
+        for b in sorted_boards:
+            b_name = b["name"]
+            if not b_name:
+                continue
+            b_lower = b_name.lower()
+            if (
+                f"on board {b_lower}" in cmd_lower
+                or f"in board {b_lower}" in cmd_lower
+                or f"to board {b_lower}" in cmd_lower
+                or f"on {b_lower} board" in cmd_lower
+                or f"in {b_lower} board" in cmd_lower
+                or f"switch to {b_lower}" in cmd_lower
+            ):
+                logger.info(f"Resolved board '{b_name}' ({b['board_id']}) from explicit user command preposition: '{command}'")
+                return {"board_id": b["board_id"], "name": b_name}
+
+    # 3. Check if parameters specified board_name or board_id
     if parameters:
         p_bname = parameters.get("board_name") or parameters.get("board")
         p_bid = parameters.get("board_id")
@@ -122,27 +169,6 @@ async def resolve_active_board(
                 b_norm = norm_str(b["name"])
                 if norm_pb and (norm_pb == b_norm or norm_pb in b_norm or b_norm in norm_pb):
                     return {"board_id": b["board_id"], "name": b["name"]}
-
-    # 2. Check if command explicitly mentions any known board name
-    if command:
-        cmd_norm = norm_str(command)
-        sorted_boards = sorted(all_boards, key=lambda b: len(b["name"]), reverse=True)
-        for b in sorted_boards:
-            b_name = b["name"]
-            if not b_name:
-                continue
-            b_norm = norm_str(b_name)
-            if len(b_norm) >= 3 and b_norm in cmd_norm:
-                logger.info(f"Resolved board '{b_name}' ({b['board_id']}) from user command: '{command}'")
-                return {"board_id": b["board_id"], "name": b_name}
-
-    # 3. Use client-provided requested_board_id
-    if requested_board_id and str(requested_board_id).strip():
-        req_id = str(requested_board_id).strip()
-        for b in all_boards:
-            if b["board_id"] == req_id:
-                return {"board_id": req_id, "name": b["name"] or "Active Board"}
-        return {"board_id": req_id, "name": "Active Board"}
 
     # 4. Use is_active: True board from database
     for b in all_boards:

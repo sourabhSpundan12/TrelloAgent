@@ -4,16 +4,21 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 
+# Indian Standard Time (IST) offset UTC+05:30
+IST = timezone(timedelta(hours=5, minutes=30), name="IST")
+
+
 def parse_due_date_for_trello(raw_due: Any) -> Optional[str]:
     """
     Parses date strings (e.g. 'Nov 19, 2026', '19 Nov 2026', '2026-11-19',
     'tomorrow', 'next week', 'Friday') or datetime objects into a valid ISO 8601
     UTC string ('YYYY-MM-DDTHH:MM:SS.000Z') strictly accepted by Trello REST API.
+    Interprets user local inputs strictly in Indian Standard Time (IST, UTC+5:30).
     """
     if not raw_due:
         return None
     if isinstance(raw_due, datetime):
-        dt = raw_due if raw_due.tzinfo else raw_due.replace(tzinfo=timezone.utc)
+        dt = raw_due if raw_due.tzinfo else raw_due.replace(tzinfo=IST)
         return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
     val = str(raw_due).strip()
@@ -21,46 +26,161 @@ def parse_due_date_for_trello(raw_due: Any) -> Optional[str]:
         return None
 
     val_lower = val.lower()
-    now = datetime.now(timezone.utc)
+    now_ist = datetime.now(IST)
 
-    # Relative shortcuts
-    if val_lower == "today":
-        return now.replace(hour=17, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-    if val_lower == "tomorrow":
-        return (now + timedelta(days=1)).replace(hour=17, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    # Extract explicit time if present (e.g. "at 3:00 pm", "5pm", "14:30", "at 9am", "and time 11:00 AM", "and time is 12:00 PM", "time 11:00 AM")
+    target_hour = 18  # Default 6:00 PM IST (EOD)
+    target_minute = 0
+    has_explicit_time = False
+    time_match = re.search(
+        r"(?:(?:(?:and\s+)?(?:at\s+(?:the\s+)?time\s+(?:of\s+)?|at|time(?:\s+is)?|timing(?:\s+is)?)\s+)?(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)?|(?:(?:and\s+)?(?:at\s+(?:the\s+)?time\s+(?:of\s+)?|at|time(?:\s+is)?|timing(?:\s+is)?)\s+)?(\d{1,2})\s*(am|pm)\b|(?:at|time(?:\s+is)?|timing(?:\s+is)?)\s+(\d{1,2})(?::(\d{2}))?\b)",
+        val_lower,
+        re.IGNORECASE,
+    )
+    if time_match:
+        if time_match.group(1) is not None:
+            # Format: H:M or H:M am/pm
+            raw_h = int(time_match.group(1))
+            raw_m = int(time_match.group(2))
+            ampm = time_match.group(3).lower() if time_match.group(3) else None
+        elif time_match.group(4) is not None:
+            # Format: H am/pm
+            raw_h = int(time_match.group(4))
+            raw_m = 0
+            ampm = time_match.group(5).lower() if time_match.group(5) else None
+        else:
+            # Format: at H or at H:M
+            raw_h = int(time_match.group(6))
+            raw_m = int(time_match.group(7)) if time_match.group(7) else 0
+            ampm = None
+
+        if ampm == "pm" and raw_h < 12:
+            raw_h += 12
+        elif ampm == "am" and raw_h == 12:
+            raw_h = 0
+
+        if 0 <= raw_h <= 23 and 0 <= raw_m <= 59:
+            target_hour = raw_h
+            target_minute = raw_m
+            has_explicit_time = True
+
+    # Relative shortcuts (interpreted in IST)
+    # 1. Hours / Minutes offset (e.g. "in 2 hours", "in 30 mins")
+    m_in_hours = re.search(r"in\s+(\d+)\s+hours?", val_lower)
+    if m_in_hours:
+        h = int(m_in_hours.group(1))
+        target_ist = now_ist + timedelta(hours=h)
+        return target_ist.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    m_in_mins = re.search(r"in\s+(\d+)\s+(?:mins?|minutes?)", val_lower)
+    if m_in_mins:
+        m = int(m_in_mins.group(1))
+        target_ist = now_ist + timedelta(minutes=m)
+        return target_ist.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    # 2. Time-of-day natural shortcuts
+    if "tonight" in val_lower:
+        h = target_hour if has_explicit_time else 20
+        target_ist = now_ist.replace(hour=h, minute=target_minute, second=0, microsecond=0)
+        return target_ist.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    if "eod" in val_lower or "end of day" in val_lower:
+        target_ist = now_ist.replace(hour=18, minute=0, second=0, microsecond=0)
+        return target_ist.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    if not has_explicit_time:
+        if "morning" in val_lower:
+            target_hour = 10
+            target_minute = 0
+        elif "afternoon" in val_lower:
+            target_hour = 14
+            target_minute = 0
+        elif "evening" in val_lower:
+            target_hour = 18
+            target_minute = 0
+
+    if "today" in val_lower:
+        target_ist = now_ist.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+        return target_ist.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     if "day after tomorrow" in val_lower:
-        return (now + timedelta(days=2)).replace(hour=17, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        target_ist = (now_ist + timedelta(days=2)).replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+        return target_ist.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    if "tomorrow" in val_lower:
+        target_ist = (now_ist + timedelta(days=1)).replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+        return target_ist.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     if "next week" in val_lower:
-        return (now + timedelta(days=7)).replace(hour=17, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        target_ist = (now_ist + timedelta(days=7)).replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+        return target_ist.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
     # in X days / weeks
     m_in_days = re.search(r"in\s+(\d+)\s+days?", val_lower)
     if m_in_days:
         d = int(m_in_days.group(1))
-        return (now + timedelta(days=d)).replace(hour=17, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        target_ist = (now_ist + timedelta(days=d)).replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+        return target_ist.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
     m_in_weeks = re.search(r"in\s+(\d+)\s+weeks?", val_lower)
     if m_in_weeks:
         w = int(m_in_weeks.group(1))
-        return (now + timedelta(weeks=w)).replace(hour=17, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        target_ist = (now_ist + timedelta(weeks=w)).replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+        return target_ist.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
     # Day of week (e.g. Friday, next Monday)
     weekdays = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6}
     for day_name, day_num in weekdays.items():
         if day_name in val_lower:
-            days_ahead = (day_num - now.weekday()) % 7
+            days_ahead = (day_num - now_ist.weekday()) % 7
             if days_ahead <= 0:
                 days_ahead += 7
-            return (now + timedelta(days=days_ahead)).replace(hour=17, minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            target_ist = (now_ist + timedelta(days=days_ahead)).replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+            return target_ist.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
     # Clean string: strip ordinal suffixes (e.g., 19th -> 19, 1st -> 1)
     clean_val = re.sub(r"(\d+)(?:st|nd|rd|th)\b", r"\1", val, flags=re.IGNORECASE)
+    # Remove time conjunction words
+    clean_val = re.sub(r"\b(?:and\s+time\s+is|and\s+time|at\s+time|time\s+is|timing\s+is|timing|time|at|is)\b", " ", clean_val, flags=re.IGNORECASE)
     # Remove commas and normalize spaces
     clean_val_no_comma = clean_val.replace(",", " ")
     clean_val_no_comma = re.sub(r"\s+", " ", clean_val_no_comma).strip()
 
-    # Try standard strptime formats
+    # Try standard strptime formats with and without time
     formats = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d %I:%M %p",
+        "%Y-%m-%d %I:%M%p",
+        "%Y-%m-%d %I %p",
+        "%Y-%m-%d %I%p",
+        "%d-%m-%Y %H:%M",
+        "%d-%m-%Y %I:%M %p",
+        "%d-%m-%Y %I%p",
+        "%d/%m/%Y %H:%M:%S",
+        "%d/%m/%Y %H:%M",
+        "%d/%m/%Y %I:%M %p",
+        "%d/%m/%Y %I:%M%p",
+        "%d/%m/%Y %I %p",
+        "%d/%m/%Y %I%p",
+        "%Y/%m/%d %H:%M",
+        "%Y/%m/%d %I:%M %p",
+        "%m/%d/%Y %H:%M",
+        "%m/%d/%Y %I:%M %p",
+        "%d %b %Y %H:%M",
+        "%d %b %Y %I:%M %p",
+        "%d %b %Y %I%p",
+        "%d %b %Y %I %p",
+        "%d %B %Y %H:%M",
+        "%d %B %Y %I:%M %p",
+        "%d %B %Y %I%p",
+        "%d %B %Y %I %p",
+        "%b %d %Y %H:%M",
+        "%b %d %Y %I:%M %p",
+        "%b %d %Y %I%p",
+        "%b %d %Y %I %p",
+        "%d %b %H:%M",
+        "%d %b %I:%M %p",
+        "%d %B %I:%M %p",
+        "%b %d %I:%M %p",
+        "%B %d %I:%M %p",
         "%Y-%m-%d",
         "%d-%m-%Y",
         "%m-%d-%Y",
@@ -81,10 +201,14 @@ def parse_due_date_for_trello(raw_due: Any) -> Optional[str]:
         try:
             parsed = datetime.strptime(clean_val_no_comma, fmt)
             if parsed.year == 1900:
-                parsed = parsed.replace(year=now.year)
-                if parsed.replace(tzinfo=timezone.utc) < (now - timedelta(days=30)):
-                    parsed = parsed.replace(year=now.year + 1)
-            parsed_utc = parsed.replace(hour=17, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+                parsed = parsed.replace(year=now_ist.year)
+                if parsed.replace(tzinfo=IST) < (now_ist - timedelta(days=30)):
+                    parsed = parsed.replace(year=now_ist.year + 1)
+            # If format did not have time components, use parsed target_hour and target_minute (IST)
+            if "%H" not in fmt and "%I" not in fmt:
+                parsed = parsed.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+            parsed_ist = parsed.replace(tzinfo=IST)
+            parsed_utc = parsed_ist.astimezone(timezone.utc)
             return parsed_utc.strftime("%Y-%m-%dT%H:%M:%S.000Z")
         except ValueError:
             continue
@@ -94,7 +218,7 @@ def parse_due_date_for_trello(raw_due: Any) -> Optional[str]:
         clean_iso = val.replace("Z", "+00:00").replace("z", "+00:00")
         dt = datetime.fromisoformat(clean_iso)
         if not dt.tzinfo:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=IST)
         return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     except Exception:
         pass
@@ -437,6 +561,7 @@ class TrelloClient:
         list_id: Optional[str] = None,
         desc: Optional[str] = "",
         due: Optional[str] = None,
+        start: Optional[str] = None,
         member_name: Optional[str] = None,
         board_id: Optional[str] = None,
     ) -> Dict[str, Any]:
@@ -457,6 +582,10 @@ class TrelloClient:
             "idList": target_list_id,
             "desc": (desc or "").strip(),
         }
+        if start:
+            parsed_start = parse_due_date_for_trello(start)
+            if parsed_start:
+                params["start"] = parsed_start
         if due:
             parsed_due = parse_due_date_for_trello(due)
             if parsed_due:
@@ -489,21 +618,26 @@ class TrelloClient:
         name: Optional[str] = None,
         desc: Optional[str] = None,
         due: Optional[str] = None,
+        start: Optional[str] = None,
         member_name: Optional[str] = None,
         member_id: Optional[str] = None,
         board_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Updates the title, description, due date, and/or assigns a member to an existing card."""
+        """Updates the title, description, due date, start date, and/or assigns a member to an existing card."""
         if not card_id or not card_id.strip():
             raise TrelloValidationError("card_id is required.")
-        if name is None and desc is None and due is None and member_name is None and member_id is None:
-            raise TrelloValidationError("At least one field ('name', 'desc', 'due', or 'member_name') must be provided to update.")
+        if name is None and desc is None and due is None and start is None and member_name is None and member_id is None:
+            raise TrelloValidationError("At least one field ('name', 'desc', 'due', 'start', or 'member_name') must be provided to update.")
 
         params: Dict[str, Any] = {}
         if name is not None:
             params["name"] = name.strip()
         if desc is not None:
             params["desc"] = desc.strip()
+        if start is not None:
+            parsed_start = parse_due_date_for_trello(start)
+            if parsed_start:
+                params["start"] = parsed_start
         if due is not None:
             parsed_due = parse_due_date_for_trello(due)
             if parsed_due:
@@ -618,4 +752,20 @@ class TrelloClient:
             "text": text.strip(),
             "created_at": res.get("date"),
         }
+
+    # 12. Retrieve card comments
+    async def get_card_comments(self, card_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Retrieves comments posted on a specific Trello card, sorted chronologically or by date.
+        Uses GET /cards/{card_id}/actions?filter=commentCard.
+        """
+        if not card_id or not card_id.strip():
+            raise TrelloValidationError("card_id is required.")
+
+        res = await self._request(
+            "GET",
+            f"/cards/{card_id.strip()}/actions",
+            params={"filter": "commentCard", "limit": limit},
+        )
+        return res if isinstance(res, list) else []
 

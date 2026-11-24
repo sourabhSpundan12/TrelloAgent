@@ -111,6 +111,16 @@ class ChatRepository:
             messages.append(doc)
         return messages
 
+    async def rename_session(self, user_id: str, conversation_id: str, title: str) -> bool:
+        """Renames a conversation session for a user."""
+        clean_title = re.sub(r"\s+", " ", title.strip())[:60]
+        now = datetime.now(timezone.utc)
+        res = await self.sessions_collection.update_one(
+            {"id": conversation_id, "user_id": user_id},
+            {"$set": {"title": clean_title, "updated_at": now}},
+        )
+        return res.modified_count > 0
+
     async def delete_session(self, user_id: str, conversation_id: str) -> bool:
         """Deletes a conversation session and all its messages."""
         await self.collection.delete_many({"user_id": user_id, "conversation_id": conversation_id})

@@ -50,6 +50,7 @@ export interface ActionApprovalPreview {
   listName: string;
   listId?: string;
   priority?: string;
+  startDate?: string;
   dueDate?: string;
   parameters: Record<string, any>;
   status: 'PENDING' | 'CONFIRMED' | 'REJECTED' | 'EXECUTING' | 'EXECUTED' | 'FAILED' | 'EXPIRED';
@@ -68,6 +69,7 @@ export interface ApprovalEditPayload {
   list_name?: string;
   list_id?: string;
   priority?: string;
+  start_date?: string;
   due_date?: string;
 }
 
@@ -130,6 +132,10 @@ export interface AIInterpretResponse {
   intent: string;
   entity: string;
   parameters: Record<string, any>;
+  entities?: Record<string, any>;
+  action_parameters?: Record<string, any>;
+  selected_template?: string | null;
+  missing_fields?: string[] | null;
   board_id?: string | null;
   model_id?: string | null;
   selected_tool_id?: string | null;
@@ -456,6 +462,7 @@ export interface EmployeeTaskReportSummary {
   employee_id: string;
   employee_name?: string;
   employee_email?: string;
+  role?: string;
   assigned_count: number;
   in_progress_count: number;
   completed_count: number;
@@ -466,5 +473,62 @@ export interface EmployeeTaskReportSummary {
   performance_level: PerformanceLevelType;
   overall_score: number;
   tasks: TaskAssignment[];
+}
+
+export interface TaskTemplate {
+  id: string;
+  name: string;
+  category: string;
+  keywords: string[];
+  description_template: string;
+  is_builtin: boolean;
+  created_by_user_id?: string;
+  created_by_email?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface TaskTemplatesResponse {
+  status: string;
+  templates: TaskTemplate[];
+  total: number;
+}
+
+export interface EmployeeCandidateEvaluation {
+  employee_id: string;
+  employee_name: string;
+  employee_email?: string;
+  role: string;
+  current_workload_score: 'OPTIMAL' | 'MODERATE' | 'HEAVY' | 'OVERLOADED' | string;
+  assigned_tasks_count: number;
+  in_progress_count: number;
+  pending_count: number;
+  overdue_count: number;
+  available_capacity_hours: number;
+  has_sufficient_capacity: boolean;
+  completed_tasks_count: number;
+  on_time_completion_rate: number;
+  avg_actual_duration_minutes: number;
+  avg_estimated_duration_minutes: number;
+  time_variance_minutes: number;
+  has_sufficient_history: boolean;
+  performance_level: string;
+  similar_tasks_count: number;
+  similar_task_experience: string;
+  estimated_task_completion_feasible: boolean;
+  suitability_score: number;
+  recommendation_reason: string;
+}
+
+export interface EmployeeRecommendationResult {
+  task_name?: string;
+  task_requirements?: string;
+  due_date?: string;
+  target_employee_query?: string;
+  recommended_employee?: EmployeeCandidateEvaluation | null;
+  alternative_employees: EmployeeCandidateEvaluation[];
+  has_sufficient_capacity_overall: boolean;
+  no_capacity_reason?: string | null;
+  explanation: string;
 }
 

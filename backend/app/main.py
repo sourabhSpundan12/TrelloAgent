@@ -41,20 +41,23 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning(f"Startup post-connection hook encountered an issue: {exc}")
 
-    # Module 5: Start background worker for automatic 1-hour deadline reminders
+    # Automatic deadline reminders background worker (1 day, 4 hours, 1 hour)
     import asyncio
-    async def _one_hour_reminder_worker():
+    from app.services.reminder_service import TaskReminderService
+    async def _reminder_worker():
         while True:
             try:
                 await asyncio.sleep(60)
                 db = MongoDBManager.get_db()
+                await TaskReminderService().scan_and_generate_reminders(db)
                 await OneHourReminderService.process_due_reminders(db)
+                await OneHourReminderService.process_overdue_followups(db)
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.warning(f"One-hour reminder worker encountered an error: {e}")
+                logger.warning(f"Deadline reminder worker encountered an error: {e}")
 
-    reminder_task = asyncio.create_task(_one_hour_reminder_worker())
+    reminder_task = asyncio.create_task(_reminder_worker())
 
     try:
         async with mcp_subapp.router.lifespan_context(mcp_subapp):

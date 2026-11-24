@@ -3,14 +3,16 @@ import logging
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pydantic import BaseModel, Field
 
 from app.core.dependencies import get_current_user
 from app.database.mongodb import get_database
 from app.mcp_server import trello_tools
 from app.schemas.user import UserResponse
 from app.services.board_service import get_active_board_id
+from app.services.pdf_report_service import PDFReportService
 
 logger = logging.getLogger(__name__)
 
@@ -476,3 +478,178 @@ async def get_board_task_report(
             "cards": [],
             "error": str(e),
         }
+
+
+# =========================================================================
+# PDF Reports (Board-wise & Employee-based with Email Delivery to Admin)
+# =========================================================================
+
+class SendBoardReportRequest(BaseModel):
+    board_id: Optional[str] = None
+    admin_email: Optional[str] = Field(None, description="Admin email recipient. If omitted, uses current user's email.")
+
+
+class SendEmployeeReportRequest(BaseModel):
+    employee_id: str = Field(..., description="Target employee ID or username")
+    employee_name: Optional[str] = None
+    board_id: Optional[str] = None
+    admin_email: Optional[str] = Field(None, description="Admin email recipient. If omitted, uses current user's email.")
+    from_date: Optional[str] = Field(None, description="Optional reporting window start date (YYYY-MM-DD or ISO)")
+    to_date: Optional[str] = Field(None, description="Optional reporting window end date (YYYY-MM-DD or ISO)")
+
+
+@router.get(
+    "/pdf/board/download",
+    summary="Download Executive Board Weekly PDF Report",
+    description="Generates and streams the official PDF report containing Weekly Metrics, Performance, Occupancy, and AI Feedback.",
+)
+async def download_board_weekly_report(
+    board_id: Optional[str] = Query(None, description="Optional board ID"),
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+):
+    pdf_bytes, summary = await PDFReportService.generate_board_weekly_report(db, board_id=board_id)
+    filename = f"Board_Weekly_Report_{datetime.now(timezone.utc).strftime('%Y%m%d')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post(
+    "/pdf/board/send-email",
+    summary="Send Executive Board Weekly PDF Report to Admin Email",
+    description="Compiles the Board Weekly PDF report and dispatches it via enterprise SMTP to the designated admin email.",
+)
+async def send_board_weekly_report_to_admin(
+    payload: SendBoardReportRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> Dict[str, Any]:
+    recipient = (payload.admin_email or current_user.email).strip()
+    if not recipient or "@" not in recipient:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Valid admin email address is required.",
+        )
+
+    pdf_bytes, summary = await PDFReportService.generate_board_weekly_report(db, board_id=payload.board_id)
+    filename = f"Board_Weekly_Report_{datetime.now(timezone.utc).strftime('%Y%m%d')}.pdf"
+
+    res = await PDFReportService.send_report_to_admin(
+        to_email=recipient,
+        report_type="Executive Board Weekly Report",
+        pdf_bytes=pdf_bytes,
+        filename=filename,
+        summary_data=summary,
+    )
+    return res
+
+
+@router.get(
+    "/pdf/employee/download",
+    summary="Download Single Consolidated Employee Weekly Report PDF",
+    description="Generates and streams single consolidated employee PDF containing 1. Weekly Task Report, 2. Performance Report, 3. Occupancy Report, and 4. Feedback Report.",
+)
+async def download_employee_weekly_report(
+    employee_id: str = Query(..., description="Target employee ID"),
+    employee_name: Optional[str] = Query(None, description="Optional employee name"),
+    board_id: Optional[str] = Query(None, description="Optional board ID"),
+    from_date: Optional[str] = Query(None, description="Reporting start date (YYYY-MM-DD or ISO)"),
+    to_date: Optional[str] = Query(None, description="Reporting end date (YYYY-MM-DD or ISO)"),
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+):
+    pdf_bytes, summary = await PDFReportService.generate_employee_weekly_report(
+        db,
+        employee_id=employee_id,
+        employee_name=employee_name,
+        board_id=board_id,
+        from_date=from_date,
+        to_date=to_date,
+    )
+    safe_name = re.sub(r"[^\w\-]", "_", employee_name or employee_id)
+    filename = f"Employee_Weekly_Report_{safe_name}_{datetime.now(timezone.utc).strftime('%Y%m%d')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post(
+    "/pdf/employee/send-email",
+    summary="Send Single Consolidated Employee Weekly Report PDF to Admin Email",
+    description="Compiles the consolidated Employee Weekly PDF report and dispatches it via enterprise SMTP to the designated admin email.",
+)
+async def send_employee_weekly_report_to_admin(
+    payload: SendEmployeeReportRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> Dict[str, Any]:
+    recipient = (payload.admin_email or current_user.email).strip()
+    if not recipient or "@" not in recipient:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Valid admin email address is required.",
+        )
+
+    pdf_bytes, summary = await PDFReportService.generate_employee_weekly_report(
+        db,
+        employee_id=payload.employee_id,
+        employee_name=payload.employee_name,
+        board_id=payload.board_id,
+        from_date=payload.from_date,
+        to_date=payload.to_date,
+    )
+    safe_name = re.sub(r"[^\w\-]", "_", payload.employee_name or payload.employee_id)
+    filename = f"Employee_Weekly_Report_{safe_name}_{datetime.now(timezone.utc).strftime('%Y%m%d')}.pdf"
+
+    res = await PDFReportService.send_report_to_admin(
+        to_email=recipient,
+        report_type=f"Consolidated Employee Weekly Report - {summary.get('employee_name')}",
+        pdf_bytes=pdf_bytes,
+        filename=filename,
+        summary_data=summary,
+    )
+    return res
+
+
+@router.get(
+    "/pdf/preview-summary",
+    summary="Preview Weekly Report Summary & AI Feedback Statement",
+    description="Returns pre-calculated summary metrics, hours comparison, and AI feedback before PDF export or emailing.",
+)
+async def preview_report_summary(
+    context: str = Query("board", description="'board' or 'employee'"),
+    employee_id: Optional[str] = Query(None, description="Employee ID if context is 'employee'"),
+    employee_name: Optional[str] = Query(None, description="Employee Name if context is 'employee'"),
+    board_id: Optional[str] = Query(None, description="Optional board ID"),
+    from_date: Optional[str] = Query(None, description="Optional reporting start date"),
+    to_date: Optional[str] = Query(None, description="Optional reporting end date"),
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> Dict[str, Any]:
+    if context.lower() == "employee":
+        if not employee_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="employee_id is required when context='employee'",
+            )
+        _, summary = await PDFReportService.generate_employee_weekly_report(
+            db,
+            employee_id=employee_id,
+            employee_name=employee_name,
+            board_id=board_id,
+            from_date=from_date,
+            to_date=to_date,
+        )
+    else:
+        _, summary = await PDFReportService.generate_board_weekly_report(db, board_id=board_id)
+
+    return {
+        "status": "SUCCESS",
+        "context": context,
+        "summary": summary,
+    }

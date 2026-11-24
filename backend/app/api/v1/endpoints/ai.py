@@ -13,6 +13,7 @@ from app.chat.schemas import (
     ChatMessageSchema,
     ChatSessionListResponse,
     ChatSessionSchema,
+    ChatSessionRenameRequest,
 )
 from app.core.dependencies import get_current_user
 from app.core.logging import logger
@@ -82,6 +83,23 @@ async def get_session_chat_history(
         except Exception as e:
             logger.warning(f"Error parsing chat message: {e}")
     return ChatHistoryResponse(messages=parsed_messages, total=len(parsed_messages), conversation_id=session_id)
+
+
+@router.patch(
+    "/sessions/{session_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Rename a chat conversation session",
+    description="Updates the title of a specific chat session in MongoDB Atlas.",
+)
+async def rename_user_chat_session(
+    session_id: str,
+    payload: ChatSessionRenameRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database),
+) -> Dict[str, Any]:
+    chat_repo = ChatRepository(db)
+    renamed = await chat_repo.rename_session(user_id=current_user.id, conversation_id=session_id, title=payload.title)
+    return {"status": "SUCCESS", "message": f"Session '{session_id}' renamed.", "renamed": renamed, "title": payload.title}
 
 
 @router.delete(
@@ -484,6 +502,7 @@ async def interpret_user_command(
             "search_cards": "trello_search_cards",
             "list_cards": "trello_search_cards",
             "get_workload": "report_get_workload",
+            "recommend_employee": "employee_recommend_assignment",
         }
         target_tool_id = intent_to_tool.get(intent_output.intent)
         if target_tool_id:
@@ -537,7 +556,7 @@ async def interpret_user_command(
             active_board_id = param_board_info["board_id"]
             active_board_name = param_board_info["name"]
 
-    if selected_tool and approval_required:
+    if selected_tool and approval_required and not intent_output.requires_clarification:
         tool_id = selected_tool.tool_id
         action_type = "CREATE_CARD"
         params = dict(intent_output.parameters)
@@ -668,7 +687,21 @@ async def interpret_user_command(
                     f"Workload Summary: {summary.get('total_tasks', 0)} total tasks "
                     f"({summary.get('completed', 0)} completed, {summary.get('in_progress', 0)} in progress, {summary.get('todo', 0)} to do)."
                 )
-            elif selected_tool.tool_id == "trello_get_card_details":
+            elif selected_tool.tool_id == "employee_recommend_assignment":
+                rec_emp = (execution_result_data or {}).get("recommended_employee")
+                overall_cap = (execution_result_data or {}).get("has_sufficient_capacity_overall", True)
+                if not overall_cap:
+                    conversational_message = (
+                        (execution_result_data or {}).get("no_capacity_reason") or
+                        "None of the employees currently have sufficient capacity for this task."
+                    )
+                elif rec_emp:
+                    conversational_message = (
+                        (execution_result_data or {}).get("explanation") or
+                        f"I recommend assigning this task to {rec_emp.get('employee_name')}."
+                    )
+                else:
+                    conversational_message = (execution_result_data or {}).get("explanation") or "Employee recommendation generated."
                 card_name = (execution_result_data or {}).get("card_name") or "Card"
                 status_val = (execution_result_data or {}).get("status") or "Open"
                 conversational_message = f"Details for '{card_name}': Current status is {status_val}."
@@ -720,9 +753,13 @@ async def interpret_user_command(
         intent=intent_output.intent,
         entity=intent_output.entity,
         parameters=intent_output.parameters,
+        entities=intent_output.entities,
+        action_parameters=intent_output.action_parameters or intent_output.parameters,
+        selected_template=intent_output.selected_template,
+        missing_fields=intent_output.missing_fields,
         selected_tool_id=selected_tool.tool_id if selected_tool else None,
         selected_tool_name=selected_tool.name if selected_tool else None,
-        approval_required=approval_required,
+        approval_required=approval_required and not intent_output.requires_clarification,
         requires_clarification=intent_output.requires_clarification,
         clarification_message=intent_output.clarification_message,
         confidence=intent_output.confidence,

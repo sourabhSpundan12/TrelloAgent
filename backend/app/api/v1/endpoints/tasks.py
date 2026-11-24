@@ -140,62 +140,80 @@ async def get_team_workload(
         # Build list of member profiles
         team_members_map: Dict[str, Dict[str, Any]] = {}
 
-        # 1. Add Trello board members
-        for tm in trello_members:
-            m_id = str(tm.get("id"))
-            m_name = tm.get("fullName") or tm.get("username") or "Board Member"
-            username = tm.get("username") or m_name.lower().replace(" ", "_")
-            team_members_map[m_id] = {
-                "id": m_id,
-                "empId": f"TRL-{m_id[:6].upper()}",
-                "name": m_name,
-                "username": username,
-                "email": f"{username}@trello.board",
-                "role": "Trello Collaborator",
-                "department": "Engineering & Operations",
-                "avatar": tm.get("avatarUrl") or f"https://api.dicebear.com/7.x/initials/svg?seed={m_name}",
-                "status": "ACTIVE",
-                "assignedTasksCount": 0,
-                "todoCount": 0,
-                "inProgressCount": 0,
-                "inReviewCount": 0,
-                "completedCount": 0,
-                "overdueCount": 0,
-                "tasks": [],
-            }
-
-        # 2. Add registered users from MongoDB if not already present
+        # 1. Registered platform users from MongoDB are designated as ADMIN role
+        admin_emails = set()
+        admin_names = set()
         if db is not None:
             try:
                 async for u in db["users"].find():
                     u_name = u.get("full_name") or u.get("email", "User").split("@")[0]
-                    # Check if already covered by trello name
-                    already_exists = any(
-                        m["name"].lower() == u_name.lower() or u_name.lower() in m["name"].lower()
-                        for m in team_members_map.values()
-                    )
-                    if not already_exists:
-                        u_id = str(u.get("_id"))
-                        team_members_map[u_id] = {
-                            "id": u_id,
-                            "empId": f"USR-{u_id[:6].upper()}",
-                            "name": u_name,
-                            "username": u.get("email", "").split("@")[0],
-                            "email": u.get("email", ""),
-                            "role": u.get("role", "EMPLOYEE"),
-                            "department": u.get("department", "Platform Administration"),
-                            "avatar": f"https://api.dicebear.com/7.x/initials/svg?seed={u_name}",
-                            "status": "ACTIVE" if u.get("is_active", True) else "AWAY",
-                            "assignedTasksCount": 0,
-                            "todoCount": 0,
-                            "inProgressCount": 0,
-                            "inReviewCount": 0,
-                            "completedCount": 0,
-                            "overdueCount": 0,
-                            "tasks": [],
-                        }
+                    u_email = u.get("email", "").lower().strip()
+                    admin_names.add(u_name.lower().strip())
+                    if u_email:
+                        admin_emails.add(u_email)
+                    u_id = str(u.get("_id"))
+                    team_members_map[u_id] = {
+                        "id": u_id,
+                        "empId": f"ADM-{u_id[:6].upper()}",
+                        "name": u_name,
+                        "username": u.get("email", "").split("@")[0],
+                        "email": u.get("email", ""),
+                        "role": "ADMIN",
+                        "department": u.get("department", "Platform Administration"),
+                        "avatar": f"https://api.dicebear.com/7.x/initials/svg?seed={u_name}",
+                        "status": "ACTIVE" if u.get("is_active", True) else "AWAY",
+                        "assignedTasksCount": 0,
+                        "todoCount": 0,
+                        "inProgressCount": 0,
+                        "inReviewCount": 0,
+                        "completedCount": 0,
+                        "overdueCount": 0,
+                        "tasks": [],
+                    }
             except Exception as db_err:
                 logger.warning(f"Could not load users from database: {db_err}")
+
+        # 2. Add active Trello board members (designated as MEMBER role)
+        for tm in trello_members:
+            m_id = str(tm.get("id"))
+            m_name = (tm.get("fullName") or tm.get("username") or "Board Member").strip()
+            username = tm.get("username") or m_name.lower().replace(" ", "_")
+            m_lower = m_name.lower()
+            u_lower = username.lower()
+
+            # If this member matches an existing Admin registered in DB, ensure they retain ADMIN role
+            matched_admin_id = None
+            for adm_id, adm_data in team_members_map.items():
+                if adm_data.get("role") == "ADMIN":
+                    if adm_data["name"].lower() == m_lower or m_lower in adm_data["name"].lower() or adm_data["name"].lower() in m_lower:
+                        matched_admin_id = adm_id
+                        break
+
+            if matched_admin_id:
+                # Update Trello ID reference on the admin so Trello tasks correlate correctly
+                team_members_map[matched_admin_id]["trello_id"] = m_id
+                team_members_map[matched_admin_id]["username"] = username
+                if tm.get("avatarUrl"):
+                    team_members_map[matched_admin_id]["avatar"] = tm.get("avatarUrl")
+            else:
+                team_members_map[m_id] = {
+                    "id": m_id,
+                    "empId": f"MBR-{m_id[:6].upper()}",
+                    "name": m_name,
+                    "username": username,
+                    "email": f"{username}@trello.board",
+                    "role": "MEMBER",
+                    "department": "Board Member",
+                    "avatar": tm.get("avatarUrl") or f"https://api.dicebear.com/7.x/initials/svg?seed={m_name}",
+                    "status": "ACTIVE",
+                    "assignedTasksCount": 0,
+                    "todoCount": 0,
+                    "inProgressCount": 0,
+                    "inReviewCount": 0,
+                    "completedCount": 0,
+                    "overdueCount": 0,
+                    "tasks": [],
+                }
 
         # If still no members found, add current logged in user
         if not team_members_map:
@@ -258,9 +276,9 @@ async def get_team_workload(
             }
 
             matched_any = False
-            # Check Trello member ID match
+            # Check Trello member ID match (either directly or via trello_id)
             for m_id, member_data in team_members_map.items():
-                if m_id in c_members:
+                if m_id in c_members or member_data.get("trello_id") in c_members:
                     member_data["assignedTasksCount"] += 1
                     if is_done:
                         member_data["completedCount"] += 1
@@ -338,11 +356,19 @@ async def trigger_deadline_reminders(
     db: AsyncIOMotorDatabase = Depends(get_database),
 ) -> Dict[str, Any]:
     from app.services.reminder_service import TaskReminderService
+    from app.services.one_hour_reminder_service import OneHourReminderService
+
     service = TaskReminderService()
     reminders = await service.scan_and_generate_reminders(db, current_user=current_user, board_id=board_id)
+
+    one_hr_res = await OneHourReminderService.process_due_reminders(db)
+    overdue_res = await OneHourReminderService.process_overdue_followups(db)
+
     return {
         "status": "SUCCESS",
         "reminders_dispatched": len(reminders),
         "reminders": reminders,
+        "one_hour_reminders": one_hr_res,
+        "overdue_followups": overdue_res,
     }
 

@@ -166,7 +166,6 @@ async def get_notifications(
     if db is not None:
         try:
             reminder_service = TaskReminderService()
-            await reminder_service.scan_and_generate_reminders(db, current_user=current_user)
             user_reminders = await reminder_service.get_user_reminders_for_notifications(
                 db, user_id=user_id_str, limit=limit
             )
